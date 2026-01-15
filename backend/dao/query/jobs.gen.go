@@ -49,6 +49,7 @@ func newJob(db *gorm.DB, opts ...gen.DOOption) job {
 	_job.Reminded = field.NewBool(tableName, "reminded")
 	_job.KeepWhenLowResourceUsage = field.NewBool(tableName, "keep_when_low_resource_usage")
 	_job.LockedTimestamp = field.NewTime(tableName, "locked_timestamp")
+	_job.MaxRunTime = field.NewInt64(tableName, "max_run_time")
 	_job.ProfileData = field.NewField(tableName, "profile_data")
 	_job.ScheduleData = field.NewField(tableName, "schedule_data")
 	_job.Events = field.NewField(tableName, "events")
@@ -115,6 +116,7 @@ type job struct {
 	Reminded                 field.Bool   // 是否已经处于发送了提醒的状态
 	KeepWhenLowResourceUsage field.Bool   // 当资源利用率低时是否保留
 	LockedTimestamp          field.Time   // 作业锁定时间
+	MaxRunTime               field.Int64  // 作业最大运行时间（秒）
 	ProfileData              field.Field  // 作业的性能数据
 	ScheduleData             field.Field  // 作业的调度数据
 	Events                   field.Field  // 作业的事件 (运行时、失败时采集)
@@ -159,6 +161,7 @@ func (j *job) updateTableName(table string) *job {
 	j.Reminded = field.NewBool(table, "reminded")
 	j.KeepWhenLowResourceUsage = field.NewBool(table, "keep_when_low_resource_usage")
 	j.LockedTimestamp = field.NewTime(table, "locked_timestamp")
+	j.MaxRunTime = field.NewInt64(table, "max_run_time")
 	j.ProfileData = field.NewField(table, "profile_data")
 	j.ScheduleData = field.NewField(table, "schedule_data")
 	j.Events = field.NewField(table, "events")
@@ -187,7 +190,7 @@ func (j *job) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (j *job) fillFieldMap() {
-	j.fieldMap = make(map[string]field.Expr, 27)
+	j.fieldMap = make(map[string]field.Expr, 28)
 	j.fieldMap["id"] = j.ID
 	j.fieldMap["created_at"] = j.CreatedAt
 	j.fieldMap["updated_at"] = j.UpdatedAt
@@ -209,6 +212,7 @@ func (j *job) fillFieldMap() {
 	j.fieldMap["reminded"] = j.Reminded
 	j.fieldMap["keep_when_low_resource_usage"] = j.KeepWhenLowResourceUsage
 	j.fieldMap["locked_timestamp"] = j.LockedTimestamp
+	j.fieldMap["max_run_time"] = j.MaxRunTime
 	j.fieldMap["profile_data"] = j.ProfileData
 	j.fieldMap["schedule_data"] = j.ScheduleData
 	j.fieldMap["events"] = j.Events

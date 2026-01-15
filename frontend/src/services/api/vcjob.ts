@@ -354,6 +354,7 @@ export interface IJupyterCreate {
   template: string
   alertEnabled: boolean
   forwards: Forward[]
+  maxRunTime?: number
 }
 
 export interface ITrainingCreate extends IJupyterCreate {

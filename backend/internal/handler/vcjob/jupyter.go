@@ -114,6 +114,7 @@ func (mgr *VolcanojobMgr) CreateJupyterJob(c *gin.Context) {
 		req.Name,
 		req.Template,
 		req.AlertEnabled,
+		req.MaxRunTime,
 	)
 
 	// 5. Create the pod spec

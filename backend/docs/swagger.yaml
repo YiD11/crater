@@ -480,6 +480,15 @@ definitions:
       msg:
         type: string
     type: object
+  github_com_raids-lab_crater_internal_resputil.Response-internal_handler_EstimateWaitTimeResp:
+    properties:
+      code:
+        $ref: '#/definitions/github_com_raids-lab_crater_internal_resputil.ErrorCode'
+      data:
+        $ref: '#/definitions/internal_handler.EstimateWaitTimeResp'
+      msg:
+        type: string
+    type: object
   github_com_raids-lab_crater_internal_resputil.Response-internal_handler_GpuAnalysisStatusResp:
     properties:
       code:
@@ -934,6 +943,40 @@ definitions:
         type: string
     required:
     - name
+    type: object
+  internal_handler.EstimateItem:
+    properties:
+      resources:
+        $ref: '#/definitions/v1.ResourceList'
+      selectors:
+        items:
+          $ref: '#/definitions/v1.NodeSelectorRequirement'
+        type: array
+    required:
+    - resources
+    type: object
+  internal_handler.EstimateResult:
+    properties:
+      canRunImmediately:
+        type: boolean
+      estimatedWaitTime:
+        $ref: '#/definitions/time.Duration'
+    type: object
+  internal_handler.EstimateWaitTimeReq:
+    properties:
+      requests:
+        items:
+          $ref: '#/definitions/internal_handler.EstimateItem'
+        type: array
+    required:
+    - requests
+    type: object
+  internal_handler.EstimateWaitTimeResp:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/internal_handler.EstimateResult'
+        type: array
     type: object
   internal_handler.FilePermission:
     enum:
@@ -1659,6 +1702,9 @@ definitions:
         type: array
       image:
         $ref: '#/definitions/internal_handler_vcjob.ImageBaseInfo'
+      maxRunTime:
+        description: 最大运行时间（秒），0 或 nil 表示不限制
+        type: integer
       name:
         type: string
       resource:
@@ -1767,6 +1813,27 @@ definitions:
         - BinarySI
         - DecimalSI
     type: object
+  time.Duration:
+    enum:
+    - -9223372036854775808
+    - 9223372036854775807
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
+    format: int64
+    type: integer
+    x-enum-varnames:
+    - minDuration
+    - maxDuration
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
   v1.ConfigMapKeySelector:
     properties:
       key:
@@ -4968,6 +5035,38 @@ paths:
       summary: 更新数据集
       tags:
       - Dataset
+  /v1/estimate:
+    post:
+      consumes:
+      - application/json
+      description: 批量预估多个作业的等待时间
+      parameters:
+      - description: 批量预估请求
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_handler.EstimateWaitTimeReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 成功
+          schema:
+            $ref: '#/definitions/github_com_raids-lab_crater_internal_resputil.Response-internal_handler_EstimateWaitTimeResp'
+        "400":
+          description: 请求参数错误
+          schema:
+            $ref: '#/definitions/github_com_raids-lab_crater_internal_resputil.Response-any'
+        "500":
+          description: 其他错误
+          schema:
+            $ref: '#/definitions/github_com_raids-lab_crater_internal_resputil.Response-any'
+      security:
+      - Bearer: []
+      summary: 批量预估作业等待时间
+      tags:
+      - Estimator
   /v1/images/account:
     get:
       consumes:

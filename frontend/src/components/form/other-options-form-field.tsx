@@ -33,6 +33,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { cn } from '@/lib/utils'
 
 import AccordionCard from './accordion-card'
+import { MaxRunTimeFormField } from './max-run-time-form-field'
 
 export function getOtherCardTitle(t: (key: string) => string) {
   return t('otherOptionsFormCard.accordionTitle')
@@ -43,6 +44,7 @@ interface OtherOptionsFormCardProps<T extends FieldValues> {
   alertEnabledPath: FieldPath<T>
   nodeSelectorEnablePath: FieldPath<T>
   nodeSelectorNodeNamePath: FieldPath<T>
+  maxRunTimePath?: FieldPath<T>
   open: boolean
   setOpen: (open: boolean) => void
 }
@@ -52,6 +54,7 @@ export function OtherOptionsFormCard<T extends FieldValues>({
   alertEnabledPath,
   nodeSelectorEnablePath,
   nodeSelectorNodeNamePath,
+  maxRunTimePath,
   open,
   setOpen,
 }: OtherOptionsFormCardProps<T>) {
@@ -141,6 +144,7 @@ export function OtherOptionsFormCard<T extends FieldValues>({
             )}
           />
         </div>
+        {maxRunTimePath && <MaxRunTimeFormField form={form} name={maxRunTimePath} />}
       </div>
     </AccordionCard>
   )

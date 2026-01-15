@@ -43,6 +43,7 @@ import (
 	"github.com/raids-lab/crater/internal/handler/vcjob"
 	"github.com/raids-lab/crater/pkg/alert"
 	"github.com/raids-lab/crater/pkg/config"
+	"github.com/raids-lab/crater/pkg/constants"
 	"github.com/raids-lab/crater/pkg/crclient"
 	"github.com/raids-lab/crater/pkg/monitor"
 
@@ -306,6 +307,13 @@ func (r *VcJobReconciler) generateCreateJobModel(ctx context.Context, job *batch
 		alertEnabled = true
 	}
 
+	var maxRunTime *time.Duration
+	if s, exist := job.Annotations[constants.AnnotationKeyMaxRunTime]; exist {
+		if t, err := time.ParseDuration(s); err == nil {
+			maxRunTime = &t
+		}
+	}
+
 	return &model.Job{
 		Name:              job.Annotations[vcjob.AnnotationKeyTaskName],
 		JobName:           job.Name,
@@ -318,6 +326,7 @@ func (r *VcJobReconciler) generateCreateJobModel(ctx context.Context, job *batch
 		Attributes:        datatypes.NewJSONType(job),
 		Template:          job.Annotations[vcjob.AnnotationKeyTaskTemplate],
 		AlertEnabled:      alertEnabled,
+		MaxRunTime:        maxRunTime,
 	}, nil
 }
 
@@ -333,6 +342,14 @@ func (r *VcJobReconciler) generateUpdateJobModel(ctx context.Context, job *batch
 			runningTimestamp = condition.LastTransitionTime.Time
 		case batch.Completed, batch.Failed, batch.Aborted, batch.Terminated:
 			completedTimestamp = condition.LastTransitionTime.Time
+		}
+	}
+
+	// 计算 MaxRunTime
+	var maxRunTime *time.Duration
+	if val, ok := job.Annotations[constants.AnnotationKeyMaxRunTime]; ok && !runningTimestamp.IsZero() {
+		if t, err := time.ParseDuration(val); err == nil {
+			maxRunTime = &t
 		}
 	}
 
@@ -394,6 +411,7 @@ func (r *VcJobReconciler) generateUpdateJobModel(ctx context.Context, job *batch
 			ProfileData:        profilePtr,
 			Events:             eventsPtr,
 			TerminatedStates:   terminatedStatesPtr,
+			MaxRunTime:         maxRunTime,
 		}
 	}
 
@@ -427,6 +445,7 @@ func (r *VcJobReconciler) generateUpdateJobModel(ctx context.Context, job *batch
 			Nodes:              datatypes.NewJSONType(nodes),
 			ScheduleData:       scheduleDataPtr,
 			Events:             eventsPtr,
+			MaxRunTime:         maxRunTime,
 		}
 	}
 
@@ -435,5 +454,6 @@ func (r *VcJobReconciler) generateUpdateJobModel(ctx context.Context, job *batch
 		RunningTimestamp:   runningTimestamp,
 		CompletedTimestamp: completedTimestamp,
 		Nodes:              datatypes.NewJSONType(nodes),
+		MaxRunTime:         maxRunTime,
 	}
 }

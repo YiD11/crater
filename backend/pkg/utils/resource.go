@@ -25,3 +25,29 @@ func SumResources(resources ...v1.ResourceList) v1.ResourceList {
 	}
 	return result
 }
+
+// SubtractResourceList 从 total 中减去 used
+func SubtractResourceList(total, used v1.ResourceList) v1.ResourceList {
+	result := total.DeepCopy()
+	for name, usedQuantity := range used {
+		if totalQuantity, exists := result[name]; exists {
+			totalQuantity.Sub(usedQuantity)
+			result[name] = totalQuantity
+		}
+	}
+	return result
+}
+
+// CanFitResources 检查可用资源是否能满足请求的资源
+func CanFitResources(available, requested v1.ResourceList) bool {
+	for name, reqQuantity := range requested {
+		availQuantity, exists := available[name]
+		if !exists {
+			return false
+		}
+		if availQuantity.Cmp(reqQuantity) < 0 {
+			return false
+		}
+	}
+	return true
+}

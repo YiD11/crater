@@ -619,6 +619,13 @@
   "jupyter.snapshot.title": "保存镜像",
   "loadingIndicator.loadingText": "加载中...",
   "loginHeatmap.title": "用户活跃度",
+  "maxRunTime.description": "超过最大运行时间后，作业资源可能被调度器回收",
+  "maxRunTime.enableLimit": "启用时间限制",
+  "maxRunTime.hours": "小时",
+  "maxRunTime.hoursPlaceholder": "小时",
+  "maxRunTime.label": "最大运行时间",
+  "maxRunTime.minutes": "分钟",
+  "maxRunTime.minutesPlaceholder": "分钟",
   "navUser.admin": "管理员",
   "navUser.chinese": "简体中文",
   "navUser.darkMode": "深色模式",
@@ -1134,5 +1141,11 @@
   "volumeMounts.fileTab": "文件",
   "volumeMounts.mountPathDescription": "可修改容器内的挂载路径",
   "volumeMounts.mountPoint": "挂载点 {{index}}",
-  "volumeMounts.mountSource": "挂载源 {{index}}"
+  "volumeMounts.mountSource": "挂载源 {{index}}",
+  "waitTimeEstimator.canRunImmediately": "可立即运行",
+  "waitTimeEstimator.error": "预估失败",
+  "waitTimeEstimator.estimatedWait": "预计等待约 {{minutes}} 分钟",
+  "waitTimeEstimator.estimatedWaitSeconds": "预计等待约 {{seconds}} 秒",
+  "waitTimeEstimator.loading": "正在预估...",
+  "waitTimeEstimator.resourceInsufficient": "集群资源不足"
 }

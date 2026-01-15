@@ -8,4 +8,6 @@ const (
 
 const (
 	LabelKeyQueueCreatedBy = "crater.raids.io/queue-created-by"
+
+	AnnotationKeyMaxRunTime = "crater.raids.io/max-run-time" // 最大运行时间（秒）
 )

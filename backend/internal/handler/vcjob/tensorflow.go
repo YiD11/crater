@@ -114,6 +114,7 @@ func (mgr *VolcanojobMgr) CreateTensorflowJob(c *gin.Context) {
 		req.Name,
 		req.Template,
 		req.AlertEnabled,
+		req.MaxRunTime,
 	)
 
 	// 4. Create the task spec

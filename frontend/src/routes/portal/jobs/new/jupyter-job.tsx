@@ -48,6 +48,7 @@ import { OtherOptionsFormCard } from '@/components/form/other-options-form-field
 import { ResourceFormFields } from '@/components/form/resource-form-field'
 import { TemplateInfo } from '@/components/form/template-info'
 import { MetadataFormJupyter } from '@/components/form/types'
+import { WaitTimeEstimator } from '@/components/form/wait-time-estimator'
 import { PublishConfigForm, publishValidateSearch } from '@/components/job/publish'
 import CardTitle from '@/components/label/card-title'
 import PageTitle from '@/components/layout/page-title'
@@ -99,6 +100,7 @@ const formSchema = z.object({
   nodeSelector: nodeSelectorSchema,
   alertEnabled: z.boolean().default(true),
   forwards: forwardsSchema,
+  maxRunTime: z.number().nullable().optional(),
 })
 
 type FormSchema = z.infer<typeof formSchema>
@@ -156,6 +158,7 @@ function RouteComponent() {
           : undefined,
         template: exportToJsonString(MetadataFormJupyter, values),
         forwards: values.forwards,
+        maxRunTime: values.maxRunTime ?? undefined,
       })
     },
     onSuccess: async (_, { jobName }) => {
@@ -200,6 +203,7 @@ function RouteComponent() {
       nodeSelector: {
         enable: false,
       },
+      maxRunTime: null,
     },
   })
 
@@ -216,25 +220,7 @@ function RouteComponent() {
       toast.info('请勿重复提交')
       return
     }
-    if (
-      values.task.resource.gpu.count > 0 &&
-      values.task.resource.cpu <= 2 &&
-      values.task.resource.memory <= 4
-    ) {
-      form.setError('task.resource.gpu.model', {
-        type: 'manual',
-        message: '建议结合节点资源分配情况，妥善调整 CPU 和内存资源申请，避免作业被 OOM Kill',
-      })
-      form.setError('task.resource.cpu', {
-        type: 'manual',
-        message: '请增加 CPU 核数',
-      })
-      form.setError('task.resource.memory', {
-        type: 'manual',
-        message: '请增加内存大小',
-      })
-      return
-    }
+
     createTask(values)
   }
 
@@ -315,6 +301,15 @@ function RouteComponent() {
                     vgpuModels: 'task.resource.vgpu.models',
                   }}
                 />
+                <WaitTimeEstimator
+                  form={form}
+                  resourcePath={{
+                    cpu: 'task.resource.cpu',
+                    memory: 'task.resource.memory',
+                    gpuCount: 'task.resource.gpu.count',
+                    gpuModel: 'task.resource.gpu.model',
+                  }}
+                />
                 <ImageFormField form={form} name="task.image" />
               </CardContent>
             </Card>
@@ -347,6 +342,7 @@ function RouteComponent() {
               alertEnabledPath="alertEnabled"
               nodeSelectorEnablePath="nodeSelector.enable"
               nodeSelectorNodeNamePath="nodeSelector.nodeName"
+              maxRunTimePath="maxRunTime"
               open={otherOpen}
               setOpen={setOtherOpen}
             />

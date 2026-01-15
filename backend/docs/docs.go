@@ -4630,6 +4630,57 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/estimate": {
+            "post": {
+                "security": [
+                    {
+                        "Bearer": []
+                    }
+                ],
+                "description": "批量预估多个作业的等待时间",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Estimator"
+                ],
+                "summary": "批量预估作业等待时间",
+                "parameters": [
+                    {
+                        "description": "批量预估请求",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/internal_handler.EstimateWaitTimeReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "成功",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_raids-lab_crater_internal_resputil.Response-internal_handler_EstimateWaitTimeResp"
+                        }
+                    },
+                    "400": {
+                        "description": "请求参数错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_raids-lab_crater_internal_resputil.Response-any"
+                        }
+                    },
+                    "500": {
+                        "description": "其他错误",
+                        "schema": {
+                            "$ref": "#/definitions/github_com_raids-lab_crater_internal_resputil.Response-any"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/images/account": {
             "get": {
                 "security": [
@@ -9355,6 +9406,20 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_raids-lab_crater_internal_resputil.Response-internal_handler_EstimateWaitTimeResp": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "$ref": "#/definitions/github_com_raids-lab_crater_internal_resputil.ErrorCode"
+                },
+                "data": {
+                    "$ref": "#/definitions/internal_handler.EstimateWaitTimeResp"
+                },
+                "msg": {
+                    "type": "string"
+                }
+            }
+        },
         "github_com_raids-lab_crater_internal_resputil.Response-internal_handler_GpuAnalysisStatusResp": {
             "type": "object",
             "properties": {
@@ -10040,6 +10105,59 @@ const docTemplate = `{
             "properties": {
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "internal_handler.EstimateItem": {
+            "type": "object",
+            "required": [
+                "resources"
+            ],
+            "properties": {
+                "resources": {
+                    "$ref": "#/definitions/v1.ResourceList"
+                },
+                "selectors": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/v1.NodeSelectorRequirement"
+                    }
+                }
+            }
+        },
+        "internal_handler.EstimateResult": {
+            "type": "object",
+            "properties": {
+                "canRunImmediately": {
+                    "type": "boolean"
+                },
+                "estimatedWaitTime": {
+                    "$ref": "#/definitions/time.Duration"
+                }
+            }
+        },
+        "internal_handler.EstimateWaitTimeReq": {
+            "type": "object",
+            "required": [
+                "requests"
+            ],
+            "properties": {
+                "requests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.EstimateItem"
+                    }
+                }
+            }
+        },
+        "internal_handler.EstimateWaitTimeResp": {
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/internal_handler.EstimateResult"
+                    }
                 }
             }
         },
@@ -11135,6 +11253,10 @@ const docTemplate = `{
                 "image": {
                     "$ref": "#/definitions/internal_handler_vcjob.ImageBaseInfo"
                 },
+                "maxRunTime": {
+                    "description": "最大运行时间（秒），0 或 nil 表示不限制",
+                    "type": "integer"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -11287,6 +11409,30 @@ const docTemplate = `{
                     ]
                 }
             }
+        },
+        "time.Duration": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+                -9223372036854775808,
+                9223372036854775807,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                3600000000000
+            ],
+            "x-enum-varnames": [
+                "minDuration",
+                "maxDuration",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour"
+            ]
         },
         "v1.ConfigMapKeySelector": {
             "type": "object",

@@ -78,6 +78,7 @@ func (mgr *VolcanojobMgr) CreatePytorchJob(c *gin.Context) {
 		req.Name,
 		req.Template,
 		req.AlertEnabled,
+		req.MaxRunTime,
 	)
 
 	// 4. Create the task spec

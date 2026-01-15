@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 	v1 "k8s.io/api/core/v1"
@@ -23,6 +24,7 @@ import (
 	"github.com/raids-lab/crater/dao/query"
 	"github.com/raids-lab/crater/internal/util"
 	"github.com/raids-lab/crater/pkg/config"
+	"github.com/raids-lab/crater/pkg/constants"
 	"github.com/raids-lab/crater/pkg/crclient"
 )
 
@@ -646,7 +648,13 @@ func (mgr *VolcanojobMgr) execCommandInPod(
 	return stdout.String(), nil
 }
 
-func getLabelAndAnnotations(jobType CraterJobType, token util.JWTMessage, baseURL, taskName, template string, alertEnabled bool) (
+func getLabelAndAnnotations(
+	jobType CraterJobType,
+	token util.JWTMessage,
+	baseURL, taskName, template string,
+	alertEnabled bool,
+	maxRunTime *int64,
+) (
 	labels map[string]string,
 	jobAnnotations map[string]string,
 	podAnnotations map[string]string,
@@ -666,6 +674,13 @@ func getLabelAndAnnotations(jobType CraterJobType, token util.JWTMessage, baseUR
 		AnnotationKeyTaskName: taskName,
 		AnnotationKeyUser:     token.Username,
 	}
+	if maxRunTime != nil && *maxRunTime > 0 {
+		maxRunTimeDuration := time.Duration(*maxRunTime) * time.Second
+		s := maxRunTimeDuration.String()
+		jobAnnotations[constants.AnnotationKeyMaxRunTime] = s
+		podAnnotations[constants.AnnotationKeyMaxRunTime] = s
+	}
+
 	return labels, jobAnnotations, podAnnotations
 }
 

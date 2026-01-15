@@ -92,6 +92,9 @@ type Job struct {
 	KeepWhenLowResourceUsage bool      `gorm:"comment:当资源利用率低时是否保留"`
 	LockedTimestamp          time.Time `gorm:"comment:作业锁定时间"`
 
+	// 最大运行时间（秒），用于预估等待时间和抢占调度
+	MaxRunTime *time.Duration `gorm:"comment:作业最大运行时间（秒）"`
+
 	// 诊断数据收集
 	ProfileData      *datatypes.JSONType[*monitor.ProfileData]          `gorm:"comment:作业的性能数据"`
 	ScheduleData     *datatypes.JSONType[*ScheduleData]                 `gorm:"comment:作业的调度数据"`

@@ -87,6 +87,7 @@ func (mgr *VolcanojobMgr) CreateTrainingJob(c *gin.Context) {
 		req.Name,
 		req.Template,
 		req.AlertEnabled,
+		req.MaxRunTime,
 	)
 
 	// 5. Create the pod spec

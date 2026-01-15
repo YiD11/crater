@@ -789,6 +789,21 @@ func main() {
 				return nil
 			},
 		},
+		{
+			ID: "202601142134", // 确保ID是唯一的
+			Migrate: func(tx *gorm.DB) error {
+				type Job struct {
+					MaxRunTime *time.Duration `gorm:"comment:作业最大运行时间（秒）"`
+				}
+				return tx.Migrator().AddColumn(&Job{}, "MaxRunTime")
+			},
+			Rollback: func(tx *gorm.DB) error {
+				type Job struct {
+					MaxRunTime *time.Duration `gorm:"comment:作业最大运行时间（秒）"`
+				}
+				return tx.Migrator().DropColumn(&Job{}, "MaxRunTime")
+			},
+		},
 	})
 
 	m.InitSchema(func(tx *gorm.DB) error {

@@ -561,6 +561,13 @@
   "jupyter.snapshot.title": "Save Image",
   "loadingIndicator.loadingText": "Loading...",
   "loginHeatmap.title": "User Activity",
+  "maxRunTime.description": "Job resources may be reclaimed by scheduler after max run time",
+  "maxRunTime.enableLimit": "Enable Time Limit",
+  "maxRunTime.hours": "Hours",
+  "maxRunTime.hoursPlaceholder": "Hours",
+  "maxRunTime.label": "Max Run Time",
+  "maxRunTime.minutes": "Minutes",
+  "maxRunTime.minutesPlaceholder": "Minutes",
   "navUser.admin": "Admin",
   "navUser.chinese": "简体中文",
   "navUser.darkMode": "Dark Mode",
@@ -1050,5 +1057,11 @@
   "volumeMounts.fileTab": "File",
   "volumeMounts.mountPathDescription": "You can modify the mount path inside the container",
   "volumeMounts.mountPoint": "Mount Point {{index}}",
-  "volumeMounts.mountSource": "Mount Source {{index}}"
+  "volumeMounts.mountSource": "Mount Source {{index}}",
+  "waitTimeEstimator.canRunImmediately": "Can run immediately",
+  "waitTimeEstimator.error": "Estimation failed",
+  "waitTimeEstimator.estimatedWait": "Estimated wait time: {{minutes}} min",
+  "waitTimeEstimator.estimatedWaitSeconds": "Estimated wait time: {{seconds}} sec",
+  "waitTimeEstimator.loading": "Estimating...",
+  "waitTimeEstimator.resourceInsufficient": "Insufficient cluster resources"
 }

@@ -170,6 +170,8 @@ type (
 		Template      string                       `json:"template"`
 		AlertEnabled  bool                         `json:"alertEnabled"`
 		Forwards      []Forward                    `json:"forwards,omitempty"`
+		// 最大运行时间（秒），0 或 nil 表示不限制
+		MaxRunTime *int64 `json:"maxRunTime,omitempty"`
 	}
 )
 
