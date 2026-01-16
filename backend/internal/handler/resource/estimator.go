@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package handler
+package resource
 
 import (
 	"fmt"
@@ -23,14 +23,15 @@ import (
 	"github.com/gin-gonic/gin"
 	corev1 "k8s.io/api/core/v1"
 
+	"github.com/raids-lab/crater/internal/handler"
 	"github.com/raids-lab/crater/internal/resputil"
 	"github.com/raids-lab/crater/internal/util"
-	"github.com/raids-lab/crater/pkg/estimator"
+	"github.com/raids-lab/crater/pkg/resource/estimator"
 )
 
 //nolint:gochecknoinits // This is the standard way to register a gin handler.
 func init() {
-	Registers = append(Registers, NewEstimatorMgr)
+	handler.Registers = append(handler.Registers, NewEstimatorMgr)
 }
 
 // EstimatorMgr 预估器管理
@@ -40,7 +41,7 @@ type EstimatorMgr struct {
 }
 
 // NewEstimatorMgr 创建新的预估器管理器
-func NewEstimatorMgr(conf *RegisterConfig) Manager {
+func NewEstimatorMgr(conf *handler.RegisterConfig) handler.Manager {
 	return &EstimatorMgr{
 		name:      "estimate",
 		estimator: estimator.NewWaitTimeEstimator(conf.KubeClient),
