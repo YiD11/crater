@@ -342,7 +342,6 @@ crater job ls --page 2 --page-size 2 --json --no-interactive
           "nickname": "Alice"
         },
         "jobType": "pytorch",
-        "scheduleType": 0,
         "queue": "default",
         "status": "Running",
         "createdAt": "2026-07-25T08:00:00Z",

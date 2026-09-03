@@ -168,6 +168,14 @@ func getPodSpecExplicitNodeNames(spec *v1.PodSpec) sets.Set[string] {
 	return affinityNodes
 }
 
+// NodeConstraintsOverlap treats an empty set as "any node", so a wildcard job overlaps everything.
+func NodeConstraintsOverlap(left, right sets.Set[string]) bool {
+	if left.Len() == 0 || right.Len() == 0 {
+		return true
+	}
+	return left.Intersection(right).Len() > 0
+}
+
 // CanResourceDomainBlock determines if a job with candidateDomain can be blocked by a timed out job with timedOutDomain
 func CanResourceDomainBlock(timedOutDomain, candidateDomain string) bool {
 	if timedOutDomain == ResourceDomainCPUOnly {

@@ -32,6 +32,11 @@ type Config struct {
 	// Required: Must be specified for the server to start.
 	Port string `json:"port"`
 
+	// ExtenderPort defines the port serving volcano's extender plugin callbacks.
+	// It is a second, cluster-internal listener kept off the ingress.
+	// Optional: Defaults to ":8089" if not specified.
+	ExtenderPort string `json:"extenderPort"`
+
 	// Namespaces contains Kubernetes namespace configurations for different resources.
 	// Required: Both Job and Image namespaces must be specified.
 	Namespaces struct {
@@ -730,6 +735,8 @@ func initConfig() *Config {
 		klog.Fatalf("Failed to read config file: %v", err)
 	}
 
+	config.applyDefaults()
+
 	// Validate configuration
 	if err := config.ValidateConfig(); err != nil {
 		klog.Fatalf("Configuration validation failed: %v", err)
@@ -743,6 +750,18 @@ func initConfig() *Config {
 
 	klog.Info("Configuration loaded and validated successfully")
 	return config
+}
+
+// DefaultExtenderPort keeps the volcano callback listener aligned with the chart's service.
+const DefaultExtenderPort = ":8089"
+
+func (c *Config) applyDefaults() {
+	if c.ExtenderPort == "" {
+		c.ExtenderPort = DefaultExtenderPort
+	}
+	if c.ExtenderPort[0] != ':' {
+		c.ExtenderPort = ":" + c.ExtenderPort
+	}
 }
 
 func readConfig(filePath string, config *Config) error {

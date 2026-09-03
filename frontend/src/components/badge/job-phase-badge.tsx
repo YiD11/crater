@@ -31,6 +31,11 @@ export const jobPhases = [
     color: '#a855f7',
   },
   {
+    value: 'Inqueue',
+    label: t('jobs.statuses.inqueue.label'),
+    color: '#6366f1',
+  },
+  {
     value: 'Aborting',
     label: '即将中止',
     color: '#ec4899',
@@ -100,6 +105,12 @@ export const getJobPhaseLabel = (phase: JobPhase): PhaseBadgeData => {
         label: t('jobs.statuses.pending.label'),
         color: 'text-highlight-purple bg-highlight-purple/20',
         description: t('jobs.statuses.pending.description'),
+      }
+    case JobPhase.Inqueue:
+      return {
+        label: t('jobs.statuses.inqueue.label'),
+        color: 'text-highlight-indigo bg-highlight-indigo/20',
+        description: t('jobs.statuses.inqueue.description'),
       }
     case JobPhase.Init:
       return {

@@ -90,7 +90,6 @@ func newJobListSnapshotServer(t *testing.T) *httptest.Server {
         "owner": "alice",
         "userInfo": {"username": "alice", "nickname": "Alice"},
         "jobType": "pytorch",
-        "scheduleType": 0,
         "queue": "default",
         "status": "Running",
         "createdAt": "2026-07-25T08:00:00Z",

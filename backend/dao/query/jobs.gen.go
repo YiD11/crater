@@ -37,7 +37,6 @@ func newJob(db *gorm.DB, opts ...gen.DOOption) job {
 	_job.UserID = field.NewUint(tableName, "user_id")
 	_job.AccountID = field.NewUint(tableName, "account_id")
 	_job.JobType = field.NewString(tableName, "job_type")
-	_job.ScheduleType = field.NewInt(tableName, "schedule_type")
 	_job.WaitingToleranceSeconds = field.NewInt64(tableName, "waiting_tolerance_seconds")
 	_job.Status = field.NewString(tableName, "status")
 	_job.Queue = field.NewString(tableName, "queue")
@@ -108,7 +107,6 @@ type job struct {
 	UserID                   field.Uint
 	AccountID                field.Uint
 	JobType                  field.String // 作业类型
-	ScheduleType             field.Int    // 调度类型
 	WaitingToleranceSeconds  field.Int64  // 作业等待忍耐时间(秒)
 	Status                   field.String // 作业状态
 	Queue                    field.String // 作业提交的volcano队列
@@ -157,7 +155,6 @@ func (j *job) updateTableName(table string) *job {
 	j.UserID = field.NewUint(table, "user_id")
 	j.AccountID = field.NewUint(table, "account_id")
 	j.JobType = field.NewString(table, "job_type")
-	j.ScheduleType = field.NewInt(table, "schedule_type")
 	j.WaitingToleranceSeconds = field.NewInt64(table, "waiting_tolerance_seconds")
 	j.Status = field.NewString(table, "status")
 	j.Queue = field.NewString(table, "queue")
@@ -212,7 +209,6 @@ func (j *job) fillFieldMap() {
 	j.fieldMap["user_id"] = j.UserID
 	j.fieldMap["account_id"] = j.AccountID
 	j.fieldMap["job_type"] = j.JobType
-	j.fieldMap["schedule_type"] = j.ScheduleType
 	j.fieldMap["waiting_tolerance_seconds"] = j.WaitingToleranceSeconds
 	j.fieldMap["status"] = j.Status
 	j.fieldMap["queue"] = j.Queue

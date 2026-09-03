@@ -16,6 +16,7 @@ import (
 
 	"github.com/raids-lab/crater/dao/model"
 	"github.com/raids-lab/crater/dao/query"
+	"github.com/raids-lab/crater/pkg/utils"
 	"github.com/raids-lab/crater/pkg/vcqueue"
 )
 
@@ -70,7 +71,7 @@ type UserResourceUsageSummary struct {
 	Resources   map[string]UserResourceUsageSummaryItem
 }
 
-type PrequeueService struct {
+type QueueQuotaService struct {
 	q             *query.Query
 	configService *ConfigService
 }
@@ -90,8 +91,8 @@ type resourceUsageMetric struct {
 	hasLimit     bool
 }
 
-func NewPrequeueService(q *query.Query, configService *ConfigService) *PrequeueService {
-	return &PrequeueService{q: q, configService: configService}
+func NewQueueQuotaService(q *query.Query, configService *ConfigService) *QueueQuotaService {
+	return &QueueQuotaService{q: q, configService: configService}
 }
 
 func resolveQueueQuotaName(queueName string, accountID, userID uint) string {
@@ -133,10 +134,12 @@ func sanitizeQueueQuota(quota map[string]string) map[string]string {
 	return sanitized
 }
 
+// QueueQuotaOccupiedJobPhases lists the phases that hold queue resources; Pending is excluded
+// because a pending job has not been admitted by volcano and owns no pod.
 func QueueQuotaOccupiedJobPhases() []string {
 	return []string{
 		string(batch.Running),
-		string(batch.Pending),
+		string(model.Inqueue),
 		string(batch.Restarting),
 		string(batch.Completing),
 		string(batch.Aborting),
@@ -262,7 +265,7 @@ func buildUserResourceUsageSummary(
 		if job.Status == batch.Running {
 			runningJobs++
 		}
-		if job.Status == batch.Pending {
+		if job.Status == model.Inqueue {
 			pendingJobs++
 		}
 		for name, quantity := range job.Resources.Data() {
@@ -271,7 +274,7 @@ func buildUserResourceUsageSummary(
 			if job.Status == batch.Running {
 				applyRunningQuantity(metric, quantity)
 			}
-			if job.Status == batch.Pending {
+			if job.Status == model.Inqueue {
 				applyPendingQuantity(metric, quantity)
 			}
 		}
@@ -290,7 +293,7 @@ func buildUserResourceUsageSummary(
 	return buildResourceUsageSummary(runningJobs, pendingJobs, metrics)
 }
 
-func (s *PrequeueService) ResolveQueueQuota(
+func (s *QueueQuotaService) ResolveQueueQuota(
 	ctx context.Context,
 	userID,
 	accountID uint,
@@ -299,7 +302,7 @@ func (s *PrequeueService) ResolveQueueQuota(
 	if s.configService == nil {
 		return nil, fmt.Errorf("config service is not initialized")
 	}
-	cfg, err := s.configService.GetPrequeueConfig(ctx)
+	cfg, err := s.configService.GetSchedulerExtenderConfig(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -323,7 +326,48 @@ func (s *PrequeueService) ResolveQueueQuota(
 	return resolved, nil
 }
 
-func (s *PrequeueService) GetConfig(ctx context.Context) (*QueueQuotaConfig, error) {
+// QueueQuotaSet holds every configured queue limit, so one round trip serves a whole scheduling
+// decision instead of one query per inspected job.
+type QueueQuotaSet struct {
+	Enabled bool
+	quotas  map[string]map[string]string
+}
+
+func (s *QueueQuotaService) LoadQuotaSet(
+	ctx context.Context,
+	cfg *model.SchedulerExtenderConfig,
+) (*QueueQuotaSet, error) {
+	qql := s.q.QueueQuotaLimit
+	records, err := qql.WithContext(ctx).Find()
+	if err != nil {
+		return nil, err
+	}
+
+	set := &QueueQuotaSet{
+		Enabled: cfg != nil && cfg.QueueQuotaEnabled,
+		quotas:  make(map[string]map[string]string, len(records)),
+	}
+	for _, record := range records {
+		set.quotas[record.Name] = sanitizeQueueQuota(record.Quota.Data())
+	}
+	return set, nil
+}
+
+func (set *QueueQuotaSet) Resolve(queueName string) *ResolvedQueueQuota {
+	resolved := &ResolvedQueueQuota{Name: queueName, Quota: map[string]string{}}
+	if set == nil {
+		return resolved
+	}
+	quota, ok := set.quotas[queueName]
+	if !ok {
+		return resolved
+	}
+	resolved.Quota = quota
+	resolved.Enabled = set.Enabled && len(quota) > 0
+	return resolved
+}
+
+func (s *QueueQuotaService) GetConfig(ctx context.Context) (*QueueQuotaConfig, error) {
 	qql := s.q.QueueQuotaLimit
 	quotas, err := qql.WithContext(ctx).
 		Order(qql.CreatedAt.Asc()).
@@ -345,7 +389,7 @@ func (s *PrequeueService) GetConfig(ctx context.Context) (*QueueQuotaConfig, err
 	}, nil
 }
 
-func (s *PrequeueService) CreateConfig(
+func (s *QueueQuotaService) CreateConfig(
 	ctx context.Context,
 	item *QueueQuotaConfigItem,
 ) (*QueueQuotaConfigItem, error) {
@@ -377,7 +421,7 @@ func (s *PrequeueService) CreateConfig(
 	}, nil
 }
 
-func (s *PrequeueService) UpdateConfig(
+func (s *QueueQuotaService) UpdateConfig(
 	ctx context.Context,
 	item *QueueQuotaConfigItem,
 ) (*QueueQuotaConfigItem, error) {
@@ -431,7 +475,7 @@ func (s *PrequeueService) UpdateConfig(
 	return updated, nil
 }
 
-func (s *PrequeueService) DeleteQueueQuota(ctx context.Context, id uint) error {
+func (s *QueueQuotaService) DeleteQueueQuota(ctx context.Context, id uint) error {
 	qql := s.q.QueueQuotaLimit
 	result, err := qql.WithContext(ctx).Unscoped().Where(qql.ID.Eq(id)).Delete()
 	if err != nil {
@@ -443,7 +487,7 @@ func (s *PrequeueService) DeleteQueueQuota(ctx context.Context, id uint) error {
 	return nil
 }
 
-func (s *PrequeueService) GetUserResourceUsageSummary(
+func (s *QueueQuotaService) GetUserResourceUsageSummary(
 	ctx context.Context,
 	userID,
 	accountID uint,
@@ -457,13 +501,13 @@ func (s *PrequeueService) GetUserResourceUsageSummary(
 	return s.getUserResourceUsageSummaryWithResolved(ctx, userID, accountID, resolved)
 }
 
-func (s *PrequeueService) getUserResourceUsageSummaryWithResolved(
+func (s *QueueQuotaService) getUserResourceUsageSummaryWithResolved(
 	ctx context.Context,
 	userID,
 	accountID uint,
 	resolved *ResolvedQueueQuota,
 ) (*UserResourceUsageSummary, error) {
-	jobs, err := s.listUserQueueOccupiedNormalJobs(ctx, userID, accountID)
+	jobs, err := s.listUserQueueOccupiedJobs(ctx, userID, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +515,7 @@ func (s *PrequeueService) getUserResourceUsageSummaryWithResolved(
 	return buildUserResourceUsageSummary(resolved, jobs), nil
 }
 
-func (s *PrequeueService) listUserQueueOccupiedNormalJobs(
+func (s *QueueQuotaService) listUserQueueOccupiedJobs(
 	ctx context.Context,
 	userID,
 	accountID uint,
@@ -481,7 +525,6 @@ func (s *PrequeueService) listUserQueueOccupiedNormalJobs(
 		j.UserID.Eq(userID),
 		j.AccountID.Eq(accountID),
 		j.Status.In(QueueQuotaOccupiedJobPhases()...),
-		j.ScheduleType.Eq(int(model.ScheduleTypeNormal)),
 	).Find()
 	if err != nil {
 		return nil, fmt.Errorf("failed to query jobs: %w", err)
@@ -500,37 +543,60 @@ func buildResourceLimitCheckResult(
 	}
 
 	summary := buildUserResourceUsageSummary(resolved, jobs)
-	used := make(map[string]int64, len(summary.Resources))
+	projected := make(map[string]int64, len(summary.Resources))
 	for resourceName, item := range summary.Resources {
 		usedQty, parseErr := apiresource.ParseQuantity(item.Used)
 		if parseErr != nil {
 			continue
 		}
-		used[resourceName] = usedQty.MilliValue()
+		projected[resourceName] = usedQty.MilliValue()
+	}
+	addMilliQuantities(projected, requestedResources)
+
+	return compareAgainstQuota(resolved, projected)
+}
+
+// EvaluateQueueQuota is the shared verdict core: the extender feeds cache-derived usage while the
+// HTTP API feeds database-derived usage, so both sides answer with identical arithmetic.
+func EvaluateQueueQuota(
+	resolved *ResolvedQueueQuota,
+	used v1.ResourceList,
+	requested v1.ResourceList,
+) *ResourceLimitCheckResult {
+	if resolved == nil || !resolved.Enabled || len(resolved.Quota) == 0 {
+		return &ResourceLimitCheckResult{Enabled: false}
 	}
 
-	for name, valStr := range requestedResources {
-		qty, parseErr := apiresource.ParseQuantity(valStr)
-		if parseErr != nil {
+	projected := make(map[string]int64, len(used)+len(requested))
+	addMilliQuantities(projected, utils.ToStringMap(used))
+	addMilliQuantities(projected, utils.ToStringMap(requested))
+
+	return compareAgainstQuota(resolved, projected)
+}
+
+func addMilliQuantities(projected map[string]int64, resources map[string]string) {
+	for name, valStr := range resources {
+		qty, err := apiresource.ParseQuantity(valStr)
+		if err != nil {
 			continue
 		}
-		used[name] += qty.MilliValue()
+		projected[name] += qty.MilliValue()
 	}
+}
 
+func compareAgainstQuota(resolved *ResolvedQueueQuota, projected map[string]int64) *ResourceLimitCheckResult {
 	var details []ResourceLimitDetail
 	anyExceeded := false
 	for resourceName, limitStr := range resolved.Quota {
-		limitQty, parseErr := apiresource.ParseQuantity(limitStr)
-		if parseErr != nil {
+		limitQty, err := apiresource.ParseQuantity(limitStr)
+		if err != nil {
 			continue
 		}
-		usedMilli := used[resourceName]
-		limitMilli := limitQty.MilliValue()
-		exceeded := usedMilli > limitMilli
-		usedQty := apiresource.NewMilliQuantity(usedMilli, limitQty.Format)
+		usedMilli := projected[resourceName]
+		exceeded := usedMilli > limitQty.MilliValue()
 		details = append(details, ResourceLimitDetail{
 			Resource: resourceName,
-			Used:     usedQty.String(),
+			Used:     apiresource.NewMilliQuantity(usedMilli, limitQty.Format).String(),
 			Limit:    limitStr,
 			Exceeded: exceeded,
 		})
@@ -546,7 +612,7 @@ func buildResourceLimitCheckResult(
 	}
 }
 
-func (s *PrequeueService) CheckUserResourceLimit(
+func (s *QueueQuotaService) CheckUserResourceLimit(
 	ctx context.Context,
 	userID,
 	accountID uint,
@@ -561,7 +627,7 @@ func (s *PrequeueService) CheckUserResourceLimit(
 		return &ResourceLimitCheckResult{Enabled: false}, nil
 	}
 
-	jobs, err := s.listUserQueueOccupiedNormalJobs(ctx, userID, accountID)
+	jobs, err := s.listUserQueueOccupiedJobs(ctx, userID, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +635,7 @@ func (s *PrequeueService) CheckUserResourceLimit(
 	return buildResourceLimitCheckResult(resolved, jobs, requestedResources), nil
 }
 
-func (s *PrequeueService) CheckRequestedResourceLimit(
+func (s *QueueQuotaService) CheckRequestedResourceLimit(
 	ctx context.Context,
 	userID,
 	accountID uint,

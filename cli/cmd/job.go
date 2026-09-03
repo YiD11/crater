@@ -24,8 +24,6 @@ import (
 )
 
 const (
-	scheduleBackfill  = 0
-	scheduleNormal    = 1
 	volumeTypeFile    = 1
 	volumeTypeDataset = 2
 	jobMaxSearchRunes = 128
@@ -33,7 +31,7 @@ const (
 
 var (
 	jobStatuses = []string{
-		"Prequeue", "Pending", "Aborting", "Aborted", "Running", "Restarting",
+		"Prequeue", "Pending", "Inqueue", "Aborting", "Aborted", "Running", "Restarting",
 		"Completing", "Completed", "Terminating", "Terminated", "Failed",
 		"Deleted", "Freed", "Cancelled",
 	}
@@ -41,7 +39,7 @@ var (
 		"jupyter", "webide", "custom", "pytorch", "tensorflow", "kuberay", "deepspeed", "openmpi",
 	}
 	jobListSortFields = []string{
-		"name", "jobName", "owner", "queue", "jobType", "scheduleType",
+		"name", "jobName", "owner", "queue", "jobType",
 		"status", "billedPointsTotal", "createdAt", "startedAt", "completedAt",
 	}
 )
@@ -736,7 +734,6 @@ func collectBasicCreate(cmd *cobra.Command) (api.JobCommonRequest, api.ResourceL
 	template, _ := cmd.Flags().GetString("template")
 	alert, _ := cmd.Flags().GetBool("alert")
 	cpuPinning, _ := cmd.Flags().GetBool("cpu-pinning")
-	schedule, _ := cmd.Flags().GetString("schedule")
 
 	issues := []usageIssue{}
 	if strings.TrimSpace(name) == "" {
@@ -758,10 +755,6 @@ func collectBasicCreate(cmd *cobra.Command) (api.JobCommonRequest, api.ResourceL
 	}
 	if gpu > 0 && strings.TrimSpace(gpuResource) == "" {
 		issues = append(issues, missingIssue("gpu-resource", "job_label_gpu_resource"))
-	}
-	scheduleValue, err := parseScheduleType(schedule)
-	if err != nil {
-		issues = append(issues, invalidIssue("schedule", err.Error()))
 	}
 	if len(issues) > 0 {
 		return api.JobCommonRequest{}, nil, api.ImageBaseInfo{}, errUsageFromIssues(issues)
@@ -805,26 +798,8 @@ func collectBasicCreate(cmd *cobra.Command) (api.JobCommonRequest, api.ResourceL
 		AlertEnabled:      alert,
 		CpuPinningEnabled: cpuPinning,
 		Forwards:          forwards,
-		ScheduleType:      scheduleValue,
 	}
 	return common, resources, api.ImageBaseInfo{ImageLink: imageLink, Archs: archs}, nil
-}
-
-func parseScheduleType(raw string) (*int, error) {
-	raw = strings.TrimSpace(strings.ToLower(raw))
-	if raw == "" {
-		return nil, nil
-	}
-	switch raw {
-	case "normal", "1":
-		v := scheduleNormal
-		return &v, nil
-	case "backfill", "0":
-		v := scheduleBackfill
-		return &v, nil
-	default:
-		return nil, fmt.Errorf("%s", i18n.T("err_invalid_job_schedule", raw))
-	}
 }
 
 func parseEnvFlags(cmd *cobra.Command) ([]api.EnvVar, error) {
@@ -972,7 +947,7 @@ func validateTrainingRequest(req api.CreateTrainingJobRequest) error {
 }
 
 func validateDistributedRequest(req api.CreateDistributedJobRequest) error {
-	issues := validateCommonIssues(req.JobCommonRequest, false)
+	issues := validateCommonIssues(req.JobCommonRequest)
 	if len(req.Tasks) == 0 {
 		issues = append(issues, missingIssue("tasks", "job_label_tasks"))
 	}
@@ -1013,7 +988,7 @@ func validateBasicRequest(common api.JobCommonRequest, resource api.ResourceList
 }
 
 func validateBasicIssues(common api.JobCommonRequest, resource api.ResourceList, image api.ImageBaseInfo) []usageIssue {
-	issues := validateCommonIssues(common, true)
+	issues := validateCommonIssues(common)
 	issues = append(issues, validateResourceIssues("resource", resource)...)
 	if strings.TrimSpace(image.ImageLink) == "" {
 		issues = append(issues, missingIssue("image", "job_label_image"))
@@ -1021,21 +996,10 @@ func validateBasicIssues(common api.JobCommonRequest, resource api.ResourceList,
 	return issues
 }
 
-func validateCommonIssues(common api.JobCommonRequest, allowBackfill bool) []usageIssue {
+func validateCommonIssues(common api.JobCommonRequest) []usageIssue {
 	issues := []usageIssue{}
 	if strings.TrimSpace(common.Name) == "" {
 		issues = append(issues, missingIssue("name", "job_label_display_name"))
-	}
-	if common.ScheduleType != nil {
-		switch *common.ScheduleType {
-		case scheduleNormal:
-		case scheduleBackfill:
-			if !allowBackfill {
-				issues = append(issues, invalidIssue("scheduleType", i18n.T("err_job_backfill_distributed")))
-			}
-		default:
-			issues = append(issues, invalidIssue("scheduleType", i18n.T("err_invalid_job_schedule_value", *common.ScheduleType)))
-		}
 	}
 	for i, mount := range common.VolumeMounts {
 		field := fmt.Sprintf("volumeMounts[%d]", i)
@@ -1493,7 +1457,6 @@ func addCreateCommonFlags(cmd *cobra.Command) {
 	cmd.Flags().String("template", "", "Template name or JSON")
 	cmd.Flags().Bool("alert", false, "Enable alert")
 	cmd.Flags().Bool("cpu-pinning", false, "Enable CPU pinning")
-	cmd.Flags().String("schedule", "", "Schedule type: normal or backfill")
 	cmd.Flags().StringArray("env", nil, "Environment variable KEY=VALUE, repeatable")
 	cmd.Flags().StringArray("volume", nil, "Workspace mount subPath:mountPath, repeatable")
 	cmd.Flags().StringArray("dataset", nil, "Dataset mount id:mountPath, repeatable")
@@ -1567,11 +1530,6 @@ func init() {
 	completion.RegisterFlagValue([]string{"job", "pods"}, "status", staticValueCompleter(podStatuses, nil))
 	completion.RegisterFlagValue([]string{"admin", "job", "ls"}, "status", staticValueCompleter(jobStatuses, nil))
 	completion.RegisterFlagValue([]string{"admin", "job", "ls"}, "type", staticValueCompleter(jobTypes, nil))
-	scheduleValues := []string{"normal", "backfill"}
-	for _, path := range [][]string{{"job", "create", "jupyter"}, {"job", "create", "webide"}, {"job", "create", "custom"}} {
-		completion.RegisterFlagValue(path, "schedule", staticValueCompleter(scheduleValues, nil))
-	}
-
 	jobCreateCmd.AddCommand(jobCreateJupyterCmd, jobCreateWebIDECmd, jobCreateCustomCmd, jobCreateTensorflowCmd, jobCreatePytorchCmd)
 	jobAdminCleanCmd.AddCommand(jobAdminCleanWaitingJupyterCmd, jobAdminCleanWaitingCustomCmd, jobAdminCleanLongRunningCmd, jobAdminCleanLowGPUCmd)
 	adminJobCmd.AddCommand(adminJobLsCmd, adminJobDeleteCmd, jobAdminLockCmd, jobAdminUnlockCmd, jobAdminKeepCmd, jobAdminCleanCmd)

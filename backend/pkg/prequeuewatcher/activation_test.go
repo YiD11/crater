@@ -15,135 +15,233 @@
 package prequeuewatcher
 
 import (
+	"context"
+	"database/sql"
+	"errors"
 	"testing"
 
+	. "github.com/bytedance/mockey"
+	"github.com/go-logr/logr"
+	. "github.com/smartystreets/goconvey/convey"
 	"gorm.io/datatypes"
-	"gorm.io/driver/sqlite"
+	"gorm.io/gen"
 	"gorm.io/gorm"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/utils/tests"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
 	"github.com/raids-lab/crater/dao/model"
 	"github.com/raids-lab/crater/dao/query"
 	"github.com/raids-lab/crater/internal/service"
+	vcjobservice "github.com/raids-lab/crater/internal/service/vcjob"
+	"github.com/raids-lab/crater/pkg/crclient"
 )
 
-func TestRestoreJobForActivationUsesLatestBandwidthConfig(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:prequeue_bandwidth?mode=memory&cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.AutoMigrate(&model.SystemConfig{}, &model.PrequeueConfig{}); err != nil {
-		t.Fatal(err)
-	}
-	configService := service.NewConfigService(query.Use(db))
-	if err := configService.UpdatePodBandwidthConfig(t.Context(), service.PodBandwidthConfig{
-		Enabled:                true,
-		ModelDownloadBandwidth: "100M",
-		JobIngressBandwidth:    "200M",
-		JobEgressBandwidth:     "300M",
-	}); err != nil {
-		t.Fatal(err)
-	}
+const storedJobName = "stored-job"
 
-	storedJob := &batch.Job{Spec: batch.JobSpec{Tasks: []batch.TaskSpec{{
-		Template: corev1.PodTemplateSpec{ObjectMeta: metav1.ObjectMeta{Annotations: map[string]string{
-			"kubernetes.io/ingress-bandwidth": "10M",
-			"kubernetes.io/egress-bandwidth":  "20M",
-		}}},
-	}}}}
-	record := &model.Job{Attributes: datatypes.NewJSONType(storedJob)}
-	watcher := &PrequeueWatcher{
-		configService: configService,
-		kubeClient:    supportedBandwidthFlannelClient(),
-	}
-
-	restored, err := watcher.restoreJobForActivation(t.Context(), record)
+// detachedWatcher builds gorm-gen statements over a dialector without a connection; every terminal
+// call is stubbed, so no SQL ever executes.
+func detachedWatcher(t *testing.T) *PrequeueWatcher {
+	t.Helper()
+	db, err := gorm.Open(tests.DummyDialector{}, &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	annotations := restored.Spec.Tasks[0].Template.Annotations
-	if annotations["kubernetes.io/ingress-bandwidth"] != "200M" ||
-		annotations["kubernetes.io/egress-bandwidth"] != "300M" {
-		t.Fatalf("activation annotations = %#v, want latest 200M/300M", annotations)
-	}
-
-	watcher.kubeClient = fake.NewSimpleClientset()
-	restored, err = watcher.restoreJobForActivation(t.Context(), record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	annotations = restored.Spec.Tasks[0].Template.Annotations
-	if _, exists := annotations["kubernetes.io/ingress-bandwidth"]; exists {
-		t.Fatalf("unavailable CNI retained ingress annotation: %#v", annotations)
-	}
-	if _, exists := annotations["kubernetes.io/egress-bandwidth"]; exists {
-		t.Fatalf("unavailable CNI retained egress annotation: %#v", annotations)
-	}
-	cfg, err := configService.GetPodBandwidthConfig(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Enabled {
-		t.Fatal("CNI capability failure must disable bandwidth limiting")
-	}
-
-	watcher.kubeClient = supportedBandwidthFlannelClient()
-	restored, err = watcher.restoreJobForActivation(t.Context(), record)
-	if err != nil {
-		t.Fatal(err)
-	}
-	annotations = restored.Spec.Tasks[0].Template.Annotations
-	if _, exists := annotations["kubernetes.io/ingress-bandwidth"]; exists {
-		t.Fatalf("disabled configuration retained ingress annotation: %#v", annotations)
-	}
-	if _, exists := annotations["kubernetes.io/egress-bandwidth"]; exists {
-		t.Fatalf("disabled configuration retained egress annotation: %#v", annotations)
-	}
+	return &PrequeueWatcher{q: query.Use(db), logger: logr.Discard()}
 }
 
-func supportedBandwidthFlannelClient() *fake.Clientset {
-	return fake.NewSimpleClientset(
-		&corev1.ConfigMap{
-			ObjectMeta: metav1.ObjectMeta{Name: "kube-flannel-cfg", Namespace: "kube-flannel"},
-			Data: map[string]string{"cni-conf.json": `{
-              "plugins": [
-                {"type": "flannel"},
-                {"type": "bandwidth", "capabilities": {"bandwidth": true}}
-              ]
-            }`},
-		},
-		&appsv1.DaemonSet{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "kube-flannel-ds", Namespace: "kube-flannel", Generation: 1,
-			},
-			Spec: appsv1.DaemonSetSpec{Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
-				InitContainers: []corev1.Container{{
-					Name:    "install-bandwidth-plugin",
-					Command: []string{"cp"},
-					Args: []string{
-						"-f", "/opt/cni/bin/bandwidth", "/host/opt/cni/bin/bandwidth",
-					},
-					VolumeMounts: []corev1.VolumeMount{{
-						Name: "cni-plugin", MountPath: "/host/opt/cni/bin",
-					}},
-				}},
-				Volumes: []corev1.Volume{{
-					Name: "cni-plugin",
-					VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{
-						Path: "/opt/cni/bin",
-					}},
-				}},
-			}}},
-			Status: appsv1.DaemonSetStatus{
-				DesiredNumberScheduled: 1,
-				UpdatedNumberScheduled: 1,
-				NumberReady:            1,
-				ObservedGeneration:     1,
-			},
-		},
-	)
+func stubTransaction() {
+	Mock((*query.Query).Transaction).To(func(q *query.Query, fc func(*query.Query) error, _ ...*sql.TxOptions) error {
+		return fc(q)
+	}).Build()
+}
+
+func stubClaim(rowsAffected int64, err error) {
+	Mock((*gen.DO).Updates).Return(gen.ResultInfo{RowsAffected: rowsAffected}, err).Build()
+}
+
+func storedRecord() *model.Job {
+	job := &batch.Job{ObjectMeta: metav1.ObjectMeta{Name: storedJobName, UID: "old-uid", ResourceVersion: "9"}}
+	job.Status.State.Phase = batch.Running
+	return &model.Job{JobName: storedJobName, Status: model.Prequeue, Attributes: datatypes.NewJSONType(job)}
+}
+
+func TestClaimAndActivatePrequeueJob(t *testing.T) {
+	candidate := &model.Job{JobName: storedJobName, Status: model.Prequeue}
+
+	t.Run("claim failure", func(t *testing.T) {
+		PatchConvey("claim failure", t, func() {
+			w := detachedWatcher(t)
+			stubTransaction()
+			stubClaim(0, errors.New("db down"))
+			restore := Mock((*PrequeueWatcher).restoreJobForActivation).Return(&batch.Job{}, nil).Build()
+
+			activated, err := w.claimAndActivatePrequeueJob(t.Context(), candidate)
+			So(activated, ShouldBeFalse)
+			So(err, ShouldNotBeNil)
+			So(restore.MockTimes(), ShouldEqual, 0)
+		})
+	})
+
+	t.Run("lost the claim race", func(t *testing.T) {
+		PatchConvey("lost the claim race", t, func() {
+			w := detachedWatcher(t)
+			stubTransaction()
+			stubClaim(0, nil)
+			restore := Mock((*PrequeueWatcher).restoreJobForActivation).Return(&batch.Job{}, nil).Build()
+			activate := Mock(vcjobservice.ActivateJob).Return(nil).Build()
+
+			activated, err := w.claimAndActivatePrequeueJob(t.Context(), candidate)
+			So(activated, ShouldBeFalse)
+			So(err, ShouldBeNil)
+			So(restore.MockTimes(), ShouldEqual, 0)
+			So(activate.MockTimes(), ShouldEqual, 0)
+		})
+	})
+
+	t.Run("restore failure rolls back", func(t *testing.T) {
+		PatchConvey("restore failure rolls back", t, func() {
+			w := detachedWatcher(t)
+			stubTransaction()
+			stubClaim(1, nil)
+			Mock((*PrequeueWatcher).restoreJobForActivation).Return(nil, errors.New("template broken")).Build()
+			activate := Mock(vcjobservice.ActivateJob).Return(nil).Build()
+
+			activated, err := w.claimAndActivatePrequeueJob(t.Context(), candidate)
+			So(activated, ShouldBeFalse)
+			So(err, ShouldNotBeNil)
+			So(activate.MockTimes(), ShouldEqual, 0)
+		})
+	})
+
+	t.Run("already existing vcjob counts as submitted", func(t *testing.T) {
+		PatchConvey("already existing vcjob counts as submitted", t, func() {
+			w := detachedWatcher(t)
+			stubTransaction()
+			stubClaim(1, nil)
+			Mock((*PrequeueWatcher).restoreJobForActivation).Return(&batch.Job{}, nil).Build()
+			exists := apierrors.NewAlreadyExists(schema.GroupResource{Group: "batch.volcano.sh", Resource: "jobs"}, storedJobName)
+			Mock(vcjobservice.ActivateJob).Return(exists).Build()
+
+			activated, err := w.claimAndActivatePrequeueJob(t.Context(), candidate)
+			So(activated, ShouldBeTrue)
+			So(err, ShouldBeNil)
+		})
+	})
+
+	t.Run("other submit errors roll back", func(t *testing.T) {
+		PatchConvey("other submit errors roll back", t, func() {
+			w := detachedWatcher(t)
+			stubTransaction()
+			stubClaim(1, nil)
+			Mock((*PrequeueWatcher).restoreJobForActivation).Return(&batch.Job{}, nil).Build()
+			submitErr := errors.New("apiserver down")
+			Mock(vcjobservice.ActivateJob).Return(submitErr).Build()
+
+			activated, err := w.claimAndActivatePrequeueJob(t.Context(), candidate)
+			So(activated, ShouldBeFalse)
+			So(errors.Is(err, submitErr), ShouldBeTrue)
+		})
+	})
+
+	t.Run("submits under a deadline", func(t *testing.T) {
+		PatchConvey("submits under a deadline", t, func() {
+			w := detachedWatcher(t)
+			stubTransaction()
+			stubClaim(1, nil)
+			Mock((*PrequeueWatcher).restoreJobForActivation).Return(&batch.Job{}, nil).Build()
+			hasDeadline := false
+			Mock(vcjobservice.ActivateJob).To(
+				func(ctx context.Context, _ client.Client, _ crclient.ServiceManagerInterface, _ *batch.Job) error {
+					_, hasDeadline = ctx.Deadline()
+					return nil
+				}).Build()
+
+			activated, err := w.claimAndActivatePrequeueJob(t.Context(), candidate)
+			So(activated, ShouldBeTrue)
+			So(err, ShouldBeNil)
+			So(hasDeadline, ShouldBeTrue)
+		})
+	})
+}
+
+func TestRestoreJobForActivation(t *testing.T) {
+	w := &PrequeueWatcher{logger: logr.Discard()}
+
+	t.Run("record without a stored template", func(t *testing.T) {
+		PatchConvey("record without a stored template", t, func() {
+			job, err := w.restoreJobForActivation(t.Context(), &model.Job{})
+			So(job, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+
+			job, err = w.restoreJobForActivation(t.Context(), nil)
+			So(job, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+		})
+	})
+
+	t.Run("bandwidth failure", func(t *testing.T) {
+		PatchConvey("bandwidth failure", t, func() {
+			bandwidthErr := errors.New("cni unavailable")
+			Mock(service.ApplyJobPodBandwidth).Return(bandwidthErr).Build()
+
+			job, err := w.restoreJobForActivation(t.Context(), storedRecord())
+			So(job, ShouldBeNil)
+			So(errors.Is(err, bandwidthErr), ShouldBeTrue)
+		})
+	})
+
+	t.Run("rebuilds a fresh vcjob from the record", func(t *testing.T) {
+		PatchConvey("rebuilds a fresh vcjob from the record", t, func() {
+			var applied *batch.Job
+			Mock(service.ApplyJobPodBandwidth).To(
+				func(_ context.Context, _ *service.ConfigService, _ kubernetes.Interface, job *batch.Job) error {
+					applied = job
+					return nil
+				}).Build()
+
+			job, err := w.restoreJobForActivation(t.Context(), storedRecord())
+			So(err, ShouldBeNil)
+			So(job, ShouldEqual, applied)
+			So(job.Name, ShouldEqual, storedJobName)
+			So(job.UID, ShouldBeEmpty)
+			So(job.ResourceVersion, ShouldBeEmpty)
+			So(job.Status.State.Phase, ShouldBeEmpty)
+		})
+	})
+}
+
+func TestListPrequeueJobs(t *testing.T) {
+	t.Run("queries the prequeue backlog oldest first", func(t *testing.T) {
+		PatchConvey("queries the prequeue backlog oldest first", t, func() {
+			w := detachedWatcher(t)
+			fixture := []*model.Job{{JobName: "first"}, {JobName: "second"}}
+			var stmt *gorm.Statement
+			Mock((*gorm.DB).Find).To(func(db *gorm.DB, dest any, _ ...any) *gorm.DB {
+				stmt = db.Statement
+				*dest.(*[]*model.Job) = fixture
+				return db
+			}).Build()
+
+			records, err := w.listPrequeueJobs(t.Context(), maxSubmitsPerRound)
+			So(err, ShouldBeNil)
+			So(records, ShouldResemble, fixture)
+
+			where, ok := stmt.Clauses["WHERE"].Expression.(clause.Where)
+			So(ok, ShouldBeTrue)
+			So(where.Exprs, ShouldHaveLength, 1)
+			So(where.Exprs[0], ShouldResemble, clause.Expr{SQL: "status = ?", Vars: []any{model.Prequeue}})
+			order, ok := stmt.Clauses["ORDER BY"].Expression.(clause.OrderBy)
+			So(ok, ShouldBeTrue)
+			So(order.Columns[0].Column.Name, ShouldEqual, "creation_timestamp ASC")
+			limit, ok := stmt.Clauses["LIMIT"].Expression.(clause.Limit)
+			So(ok, ShouldBeTrue)
+			So(*limit.Limit, ShouldEqual, maxSubmitsPerRound)
+		})
+	})
 }

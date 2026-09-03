@@ -45,11 +45,6 @@ export enum JobType {
   OpenMPI = 'openmpi',
 }
 
-export enum ScheduleType {
-  Backfill = 0,
-  Normal = 1,
-}
-
 export const isInteracitveJob = (jobType: JobType) => {
   return jobType === JobType.Jupyter || jobType === JobType.WebIDE
 }
@@ -64,7 +59,6 @@ export interface IJobInfo {
   owner: string
   userInfo: IUserInfo
   jobType: JobType
-  scheduleType: ScheduleType
   queue: string
   status: JobPhase
   createdAt: string
@@ -144,6 +138,7 @@ export const apiJobAllFacets = (params: RemoteTableParams, signal?: AbortSignal)
 export enum JobPhase {
   Prequeue = 'Prequeue',
   Pending = 'Pending',
+  Inqueue = 'Inqueue',
   Aborting = 'Aborting',
   Aborted = 'Aborted',
   Running = 'Running',
@@ -174,7 +169,12 @@ export const getUnifiedJobPhase = (phase: JobPhase): JobPhase =>
 
 export const getJobStateType = (phase: JobPhase): JobStatus => {
   // NotStarted is a coarse lifecycle bucket; queued and waiting still need separate UI copy.
-  const notStartedPhases = new Set([JobPhase.Prequeue, JobPhase.Pending, JobPhase.Init])
+  const notStartedPhases = new Set([
+    JobPhase.Prequeue,
+    JobPhase.Pending,
+    JobPhase.Inqueue,
+    JobPhase.Init,
+  ])
 
   // 作业正在运行的状态
   const runningPhases = new Set([
@@ -253,13 +253,12 @@ function withJobTypes(params: RemoteTableParams, allowed: JobType[]): RemoteTabl
 }
 
 export function toJobProtocol(params: RemoteTableParams): RemoteTableParams {
-  const { jobType, scheduleType, ...filters } = params.filters
+  const { jobType, ...filters } = params.filters
   return {
     ...params,
     filters: {
       ...filters,
       ...(jobType ? { job_type: jobType } : {}),
-      ...(scheduleType ? { schedule_type: scheduleType } : {}),
     },
   }
 }
@@ -390,7 +389,6 @@ export interface IJupyterDetail {
   userInfo: IUserInfo
   jobName: string
   jobType: JobType
-  scheduleType: ScheduleType
   retry: string
   queue: string
   status: JobPhase
@@ -466,7 +464,6 @@ export interface IJupyterCreate {
   alertEnabled: boolean
   cpuPinningEnabled?: boolean
   forwards: Forward[]
-  scheduleType?: ScheduleType
 }
 
 export interface ITrainingCreate extends IJupyterCreate {

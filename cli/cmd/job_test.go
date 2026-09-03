@@ -9,26 +9,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func TestValidateDistributedRequestRejectsBackfill(t *testing.T) {
-	backfill := scheduleBackfill
-	req := api.CreateDistributedJobRequest{
-		JobCommonRequest: api.JobCommonRequest{
-			Name:         "demo",
-			ScheduleType: &backfill,
-		},
-		Tasks: []api.TaskRequest{{
-			Name:     "worker",
-			Replicas: 1,
-			Resource: api.ResourceList{"cpu": "1", "memory": "1Gi"},
-			Image:    api.ImageBaseInfo{ImageLink: "example/image:latest"},
-		}},
-	}
-	err := validateDistributedRequest(req)
-	if err == nil || !strings.Contains(err.Error(), "backfill") {
-		t.Fatalf("error = %v, want backfill validation error", err)
-	}
-}
-
 func TestValidateInteractiveRequestAcceptsBackendMountDTO(t *testing.T) {
 	req := api.CreateInteractiveJobRequest{
 		JobCommonRequest: api.JobCommonRequest{
