@@ -234,6 +234,10 @@ backendConfig:
   # Must be specified for the server to start
   port: :8088
 
+  # -- Network port serving volcano's scheduler extender callbacks (Optional)
+  # Unset deploys without the endpoint; when set it must match extender.urlPrefix in the volcano configmap
+  schedulerExtenderPort: :8089
+
   # -- Model download functionality configurations
   modelDownload:
     # -- Container image used for model download jobs

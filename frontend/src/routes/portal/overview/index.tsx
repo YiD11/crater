@@ -26,7 +26,6 @@ import JobPhaseLabel, { getJobPhaseLabel, jobPhases } from '@/components/badge/j
 import JobTypeLabel from '@/components/badge/job-type-badge'
 import NodeBadges from '@/components/badge/node-badges'
 import ResourceBadges from '@/components/badge/resource-badges'
-import ScheduleTypeLabel from '@/components/badge/schedule-type-badge'
 import DocsButton from '@/components/button/docs-button'
 import NivoPie from '@/components/chart/nivo-pie'
 import PieCard from '@/components/chart/pie-card'
@@ -57,7 +56,6 @@ import {
   IJobInfo,
   JobPhase,
   JobType,
-  ScheduleType,
   apiJobAllFacets,
   apiJobAllList,
   getDisplayJobPhase,
@@ -99,7 +97,7 @@ function Overview() {
     sorting: [{ id: 'createdAt', desc: true }],
     columnFilters: [
       { id: 'days', value: ['7'] },
-      { id: 'status', value: ['Running', 'Pending', 'Prequeue'] },
+      { id: 'status', value: ['Running', 'Inqueue', 'Pending'] },
     ],
   })
 
@@ -125,17 +123,6 @@ function Overview() {
           <DataTableColumnHeader column={column} title={getHeader('jobType')} />
         ),
         cell: ({ row }) => <JobTypeLabel jobType={row.getValue<JobType>('jobType')} />,
-      },
-      {
-        accessorFn: (row) => String(row.scheduleType ?? ScheduleType.Normal),
-        id: 'scheduleType',
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title={getHeader('scheduleType')} />
-        ),
-        cell: ({ row }) => <ScheduleTypeLabel scheduleType={row.original.scheduleType} />,
-        filterFn: (row, id, value) => {
-          return (value as string[]).includes(row.getValue(id))
-        },
       },
       {
         accessorKey: 'queue',
@@ -204,7 +191,12 @@ function Overview() {
           <DataTableColumnHeader column={column} title={getHeader('status')} />
         ),
         cell: ({ row }) => {
-          return <JobPhaseLabel jobPhase={row.getValue<JobPhase>('status')} />
+          return (
+            <JobPhaseLabel
+              jobPhase={row.getValue<JobPhase>('status')}
+              podGroupPhase={row.original.podGroupPhase}
+            />
+          )
         },
         filterFn: (row, id, value) => {
           return (value as string[]).includes(row.getValue(id))
@@ -267,7 +259,7 @@ function Overview() {
       getHeader,
       filterOptions: config.filterOptions.map((filter) =>
         filter.key === 'status'
-          ? { ...filter, defaultValues: ['Running', 'Pending', 'Prequeue'] }
+          ? { ...filter, defaultValues: ['Running', 'Inqueue', 'Pending'] }
           : filter
       ),
     }
@@ -359,17 +351,17 @@ function Overview() {
               icon: FlaskConicalIcon,
             },
             {
-              title: t('statuses.awaitingAdmission'),
-              value: jobStatus.find(({ id }) => id === JobPhase.Prequeue)?.value ?? 0,
-              className: 'text-highlight-violet',
-              description: t('jobs.statuses.prequeue.description'),
-              icon: ClockIcon,
-            },
-            {
-              title: t('statuses.pendingScheduling'),
+              title: t('jobs.statuses.pending.label'),
               value: jobStatus.find(({ id }) => id === JobPhase.Pending)?.value ?? 0,
               className: 'text-highlight-purple',
               description: t('jobs.statuses.pending.description'),
+              icon: ClockIcon,
+            },
+            {
+              title: t('jobs.statuses.inqueue.label'),
+              value: jobStatus.find(({ id }) => id === JobPhase.Inqueue)?.value ?? 0,
+              className: 'text-highlight-indigo',
+              description: t('jobs.statuses.inqueue.description'),
               icon: ClockIcon,
             },
             {

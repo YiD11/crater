@@ -87,10 +87,10 @@ type JobInfo struct {
 	Owner                   string       `json:"owner"`
 	UserInfo                UserInfo     `json:"userInfo"`
 	JobType                 string       `json:"jobType"`
-	ScheduleType            int          `json:"scheduleType"`
 	WaitingToleranceSeconds *int64       `json:"waitingToleranceSeconds,omitempty"`
 	Queue                   string       `json:"queue"`
 	Status                  string       `json:"status"`
+	PodGroupPhase           string       `json:"podGroupPhase,omitempty"`
 	CreatedAt               time.Time    `json:"createdAt"`
 	StartedAt               time.Time    `json:"startedAt"`
 	CompletedAt             time.Time    `json:"completedAt"`
@@ -110,11 +110,11 @@ type JobDetail struct {
 	UserInfo                UserInfo                 `json:"userInfo"`
 	JobName                 string                   `json:"jobName"`
 	JobType                 string                   `json:"jobType"`
-	ScheduleType            int                      `json:"scheduleType"`
 	WaitingToleranceSeconds *int64                   `json:"waitingToleranceSeconds,omitempty"`
 	Queue                   string                   `json:"queue"`
 	Resources               ResourceList             `json:"resources"`
 	Status                  string                   `json:"status"`
+	PodGroupPhase           string                   `json:"podGroupPhase,omitempty"`
 	ProfileData             map[string]interface{}   `json:"profileData,omitempty"`
 	ScheduleData            map[string]interface{}   `json:"scheduleData,omitempty"`
 	Events                  []map[string]interface{} `json:"events,omitempty"`
@@ -156,7 +156,6 @@ type JobCommonRequest struct {
 	AlertEnabled      bool                      `json:"alertEnabled"`
 	CpuPinningEnabled bool                      `json:"cpuPinningEnabled,omitempty"`
 	Forwards          []Forward                 `json:"forwards,omitempty"`
-	ScheduleType      *int                      `json:"scheduleType,omitempty"`
 }
 
 type CreateInteractiveJobRequest struct {

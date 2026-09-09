@@ -40,7 +40,7 @@ const (
 	annotationKeyTaskName     = "crater.raids.io/task-name"
 	annotationKeyTaskTemplate = "crater.raids.io/task-template"
 	annotationKeyAlertEnabled = "crater.raids.io/alert-enabled"
-	annotationKeyUserID       = "crater.raids.io/user-id"
+	AnnotationKeyUserID       = "crater.raids.io/user-id"
 	annotationKeyForwards     = "crater.raids.io/forwards"
 	// AnnotationKeyMountedDatasetIDs stores mounted dataset IDs as JSON array on job annotations.
 	AnnotationKeyMountedDatasetIDs = "crater.raids.io/mounted-dataset-ids"
@@ -76,12 +76,6 @@ func GenerateJobRecord(
 	if creationTimestamp.IsZero() {
 		creationTimestamp = time.Now()
 	}
-	scheduleType := model.ScheduleTypeNormal
-	if scheduleTypeInt, err := strconv.ParseInt(
-		job.Annotations[AnnotationKeyScheduleType], 10, 64,
-	); err == nil {
-		scheduleType = model.ScheduleType(scheduleTypeInt)
-	}
 	var waitingToleranceSeconds *int64
 	if waitingToleranceSecondsInt, err := strconv.ParseInt(
 		job.Annotations[AnnotationKeyWaitingToleranceSeconds], 10, 64,
@@ -94,7 +88,6 @@ func GenerateJobRecord(
 		UserID:                  userID,
 		AccountID:               accountID,
 		JobType:                 model.JobType(job.Labels[crclient.LabelKeyTaskType]),
-		ScheduleType:            ptr.To(scheduleType),
 		WaitingToleranceSeconds: waitingToleranceSeconds,
 		Status:                  status,
 		Queue:                   job.Spec.Queue,
@@ -193,7 +186,7 @@ func ensureJobAccessResources(
 	jobType := job.Labels[crclient.LabelKeyTaskType]
 	username := job.Labels[crclient.LabelKeyTaskUser]
 	baseURL := job.Labels[crclient.LabelKeyBaseURL]
-	userID, err := strconv.ParseUint(job.Annotations[annotationKeyUserID], 10, 64)
+	userID, err := strconv.ParseUint(job.Annotations[AnnotationKeyUserID], 10, 64)
 	if err != nil {
 		return fmt.Errorf("invalid user id annotation: %w", err)
 	}

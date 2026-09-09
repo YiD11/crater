@@ -45,11 +45,6 @@ export enum JobType {
   OpenMPI = 'openmpi',
 }
 
-export enum ScheduleType {
-  Backfill = 0,
-  Normal = 1,
-}
-
 export const isInteracitveJob = (jobType: JobType) => {
   return jobType === JobType.Jupyter || jobType === JobType.WebIDE
 }
@@ -64,9 +59,9 @@ export interface IJobInfo {
   owner: string
   userInfo: IUserInfo
   jobType: JobType
-  scheduleType: ScheduleType
   queue: string
   status: JobPhase
+  podGroupPhase?: PodGroupPhase
   createdAt: string
   startedAt: string
   completedAt: string
@@ -144,6 +139,7 @@ export const apiJobAllFacets = (params: RemoteTableParams, signal?: AbortSignal)
 export enum JobPhase {
   Prequeue = 'Prequeue',
   Pending = 'Pending',
+  Inqueue = 'Inqueue',
   Aborting = 'Aborting',
   Aborted = 'Aborted',
   Running = 'Running',
@@ -159,6 +155,22 @@ export enum JobPhase {
   Init = '',
 }
 
+// Raw volcano PodGroup phase persisted by the backend; only meaningful while status is Inqueue.
+export enum PodGroupPhase {
+  Pending = 'Pending',
+  Inqueue = 'Inqueue',
+  Running = 'Running',
+  Unknown = 'Unknown',
+  Completed = 'Completed',
+}
+
+// Display-only stage, kept out of JobPhase so it can never reach filters or requests.
+export enum JobDisplayPhase {
+  Starting = 'Starting',
+}
+
+export type JobDisplayPhaseValue = JobPhase | JobDisplayPhase
+
 export enum JobStatus {
   NotStarted = 'NotStarted',
   Running = 'Running',
@@ -169,12 +181,27 @@ export enum JobStatus {
 
 export const getDisplayJobPhase = (phase: JobPhase): JobPhase => phase
 
-export const getUnifiedJobPhase = (phase: JobPhase): JobPhase =>
-  phase === JobPhase.Prequeue ? JobPhase.Pending : phase
+// Inqueue with a bound PodGroup means nodes are assigned and containers are starting.
+export const getJobDisplayPhase = (
+  status: JobPhase,
+  podGroupPhase?: PodGroupPhase
+): JobDisplayPhaseValue => {
+  if (status !== JobPhase.Inqueue) {
+    return status
+  }
+  return podGroupPhase === PodGroupPhase.Running || podGroupPhase === PodGroupPhase.Completed
+    ? JobDisplayPhase.Starting
+    : JobPhase.Inqueue
+}
 
 export const getJobStateType = (phase: JobPhase): JobStatus => {
   // NotStarted is a coarse lifecycle bucket; queued and waiting still need separate UI copy.
-  const notStartedPhases = new Set([JobPhase.Prequeue, JobPhase.Pending, JobPhase.Init])
+  const notStartedPhases = new Set([
+    JobPhase.Prequeue,
+    JobPhase.Pending,
+    JobPhase.Inqueue,
+    JobPhase.Init,
+  ])
 
   // 作业正在运行的状态
   const runningPhases = new Set([
@@ -253,13 +280,12 @@ function withJobTypes(params: RemoteTableParams, allowed: JobType[]): RemoteTabl
 }
 
 export function toJobProtocol(params: RemoteTableParams): RemoteTableParams {
-  const { jobType, scheduleType, ...filters } = params.filters
+  const { jobType, ...filters } = params.filters
   return {
     ...params,
     filters: {
       ...filters,
       ...(jobType ? { job_type: jobType } : {}),
-      ...(scheduleType ? { schedule_type: scheduleType } : {}),
     },
   }
 }
@@ -390,10 +416,10 @@ export interface IJupyterDetail {
   userInfo: IUserInfo
   jobName: string
   jobType: JobType
-  scheduleType: ScheduleType
   retry: string
   queue: string
   status: JobPhase
+  podGroupPhase?: PodGroupPhase
   resources?: Record<string, string>
   profileData?: ProfileData
   scheduleData?: ScheduleData
@@ -466,7 +492,6 @@ export interface IJupyterCreate {
   alertEnabled: boolean
   cpuPinningEnabled?: boolean
   forwards: Forward[]
-  scheduleType?: ScheduleType
 }
 
 export interface ITrainingCreate extends IJupyterCreate {

@@ -25,15 +25,10 @@ func (mgr *VolcanojobMgr) CreatePytorchJob(c *gin.Context) {
 		resputil.BadRequestError(c, err.Error())
 		return
 	}
-	scheduleType, err := req.validateScheduleOptions(false)
-	if err != nil {
-		resputil.BadRequestError(c, err.Error())
+	if !mgr.preCheckCreateJob(c, token, false) {
 		return
 	}
-	if !mgr.preCheckCreateJob(c, token, scheduleType, false) {
-		return
-	}
-	scheduleMetadata, err := mgr.resolveJobScheduleMetadata(c.Request.Context(), scheduleType)
+	waitingToleranceSeconds, err := mgr.resolveWaitingTolerance(c)
 	if err != nil {
 		resputil.Error(c, err.Error(), resputil.ServiceError)
 		return
@@ -87,7 +82,7 @@ func (mgr *VolcanojobMgr) CreatePytorchJob(c *gin.Context) {
 		token,
 		baseURL,
 		&req.CreateJobCommon,
-		scheduleMetadata,
+		waitingToleranceSeconds,
 	)
 
 	// 4. Create the task spec
@@ -182,7 +177,7 @@ func (mgr *VolcanojobMgr) CreatePytorchJob(c *gin.Context) {
 	}
 
 	if err = mgr.submitJob(c, token, &job); err != nil {
-		resputil.Error(c, err.Error(), resputil.NotSpecified)
+		resputil.HandleError(c, err)
 		return
 	}
 
