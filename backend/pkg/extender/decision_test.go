@@ -82,7 +82,7 @@ func TestDecideSkips(t *testing.T) {
 		result := s.decide(t.Context(), vcjobRequest(jobA))
 		So(result.status, ShouldEqual, voteAbstain)
 		So(fieldValue(result, fieldSkip), ShouldEqual, "session state unavailable")
-		So(fieldValue(result, "error"), ShouldEqual, "db down")
+		So(result.err, ShouldBeError, "db down")
 	})
 
 	PatchConvey("plugin switched off", t, func() {

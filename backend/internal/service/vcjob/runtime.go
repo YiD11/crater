@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"time"
 
-	"gorm.io/datatypes"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	batch "volcano.sh/apis/pkg/apis/batch/v1alpha1"
 
@@ -60,44 +57,6 @@ func CalculateJobResources(job *batch.Job) v1.ResourceList {
 			return task.Replicas
 		},
 	)
-}
-
-func GenerateJobRecord(
-	job *batch.Job,
-	userID uint,
-	accountID uint,
-	status batch.JobPhase,
-) (*model.Job, error) {
-	alertEnabled, err := strconv.ParseBool(job.Annotations[annotationKeyAlertEnabled])
-	if err != nil {
-		alertEnabled = true
-	}
-	creationTimestamp := job.CreationTimestamp.Time
-	if creationTimestamp.IsZero() {
-		creationTimestamp = time.Now()
-	}
-	var waitingToleranceSeconds *int64
-	if waitingToleranceSecondsInt, err := strconv.ParseInt(
-		job.Annotations[AnnotationKeyWaitingToleranceSeconds], 10, 64,
-	); err == nil {
-		waitingToleranceSeconds = ptr.To(waitingToleranceSecondsInt)
-	}
-	ret := &model.Job{
-		Name:                    job.Annotations[annotationKeyTaskName],
-		JobName:                 job.Name,
-		UserID:                  userID,
-		AccountID:               accountID,
-		JobType:                 model.JobType(job.Labels[crclient.LabelKeyTaskType]),
-		WaitingToleranceSeconds: waitingToleranceSeconds,
-		Status:                  status,
-		Queue:                   job.Spec.Queue,
-		CreationTimestamp:       creationTimestamp,
-		Resources:               datatypes.NewJSONType(CalculateJobResources(job)),
-		Attributes:              datatypes.NewJSONType(job),
-		Template:                job.Annotations[annotationKeyTaskTemplate],
-		AlertEnabled:            alertEnabled,
-	}
-	return ret, nil
 }
 
 func RestoreJobFromRecord(record *model.Job) (*batch.Job, error) {

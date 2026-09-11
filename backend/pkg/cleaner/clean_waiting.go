@@ -53,7 +53,7 @@ func deleteUnscheduledJobs(c context.Context, clients *Clients, waitMinitues int
 			jobDB.LockedTimestamp.IsNull(),
 			jobDB.LockedTimestamp.Lte(now),
 		),
-		jobDB.Status.Eq(string(batch.Pending)),
+		jobDB.Status.In(string(batch.Pending), string(model.Inqueue)),
 		jobDB.JobType.In(jobTypeStrs...),
 		jobDB.CreationTimestamp.Lt(now.Add(-time.Duration(waitMinitues)*time.Minute)),
 	).Find()

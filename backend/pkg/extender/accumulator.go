@@ -9,8 +9,13 @@ import (
 	"github.com/raids-lab/crater/pkg/utils"
 )
 
-// reservationTTL drains entries whose job never reached Inqueue, e.g. an earlier-tier plugin started
-// rejecting it so the extender is no longer asked and no admission event will ever arrive.
+// reservationTTL is only a backstop. Entries normally leave through sweep once the snapshot shows the
+// job admitted, terminal or gone. Every pass through decide refreshes the timestamp, so a job that
+// capacity keeps rejecting for now but may still admit later holds its reservation for as long as
+// volcano keeps asking about it: that is the intended first-come-first-served order. The TTL covers
+// the remaining case where the extender is no longer asked at all, e.g. an earlier-tier plugin
+// started rejecting the job. Jobs that can never be admitted are kept out of the ledger by decide's
+// capability guard.
 const reservationTTL = 30 * time.Second
 
 type reservation struct {
@@ -20,9 +25,9 @@ type reservation struct {
 	at        time.Time
 }
 
-// sessionAccumulator tracks jobs this process已放行 but whose admission volcano writes back only at
-// session close. Without it a batch submission is measured against one stale usage snapshot and the
-// whole batch passes the same quota check.
+// sessionAccumulator tracks jobs this process let through but whose admission volcano writes back
+// only at session close. Without it a batch submission is measured against one stale usage snapshot
+// and the whole batch passes the same quota check.
 type sessionAccumulator struct {
 	mu      sync.Mutex
 	entries map[string]*reservation

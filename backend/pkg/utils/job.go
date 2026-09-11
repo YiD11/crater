@@ -191,6 +191,12 @@ func IsPodGroupAdmitted(phase scheduling.PodGroupPhase) bool {
 	return phase != "" && phase != scheduling.PodGroupPending
 }
 
+// IsPodGroupWaitingForNodes reports whether volcano admitted the pod group but has not yet bound
+// its minimum members, so the job still competes for nodes and can starve.
+func IsPodGroupWaitingForNodes(phase scheduling.PodGroupPhase) bool {
+	return phase == scheduling.PodGroupInqueue || phase == scheduling.PodGroupUnknown
+}
+
 // IsJobPhaseTerminal reports whether the vcjob reached a phase it never leaves.
 func IsJobPhaseTerminal(phase batch.JobPhase) bool {
 	switch phase {

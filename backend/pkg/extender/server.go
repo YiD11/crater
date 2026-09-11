@@ -166,7 +166,12 @@ func (s *Server) handleJobEnqueueable(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case result.status == voteReject:
 		s.logger.Info("rejecting job enqueue", result.fields...)
+	case result.err != nil:
+		// A failure-driven abstention silently disables quota and blocking, so it must be visible.
+		s.logger.Error(result.err, "abstaining from job enqueue", result.fields...)
 	case len(result.fields) > 0:
+		// Scope and capability skips repeat every round for the same objects; keep them out of the
+		// default log level.
 		s.logger.V(1).Info("abstaining from job enqueue", result.fields...)
 	}
 

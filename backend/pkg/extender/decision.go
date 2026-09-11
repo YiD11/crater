@@ -16,27 +16,31 @@ import (
 const maxQueueHierarchyDepth = 8
 
 // vote carries the answer plus the structured log fields that are the only diagnosis channel volcano
-// leaves available for extender decisions.
+// leaves available for extender decisions. err marks an abstention forced by a failure rather than
+// by scope, which is the one kind worth surfacing at the default log level.
 type vote struct {
 	status int
 	fields []any
+	err    error
 }
 
-// decide runs the design's vote order: per-user queue quota first, then timeout blocking. Every exit
-// is either Reject or Abstain.
+// decide runs the design's vote order: the capability guard, then per-user queue quota, then timeout
+// blocking. Every exit is either Reject or Abstain.
 func (s *Server) decide(ctx context.Context, req *requestJobInfo) vote {
 	jobName := req.ownerJobName()
 	if jobName == "" {
-		return vote{voteAbstain, []any{"podGroup", req.podGroupName(), "skip", "not owned by a vcjob"}}
+		return vote{status: voteAbstain, fields: []any{"podGroup", req.podGroupName(), "skip", "not owned by a vcjob"}}
 	}
 
 	if req.Namespace != config.GetConfig().Namespaces.Job {
-		return vote{voteAbstain, []any{"job", jobName, "namespace", req.Namespace, "skip", "outside the job namespace"}}
+		return vote{status: voteAbstain, fields: []any{
+			"job", jobName, "namespace", req.Namespace, "skip", "outside the job namespace",
+		}}
 	}
 
 	state, err := s.currentSession(ctx)
 	if err != nil {
-		return vote{voteAbstain, []any{"job", jobName, "skip", "session state unavailable", "error", err.Error()}}
+		return vote{status: voteAbstain, err: err, fields: []any{"job", jobName, "skip", "session state unavailable"}}
 	}
 	if state.snap == nil {
 		return vote{status: voteAbstain}
@@ -46,11 +50,18 @@ func (s *Server) decide(ctx context.Context, req *requestJobInfo) vote {
 	// Reject rather than abstain: volcano asks again next session, an abstention admits the job unchecked.
 	candidate, ok := snap.byName[jobName]
 	if !ok {
-		return vote{voteReject, []any{"job", jobName, "cause", "vcjob not in cache yet"}}
+		return vote{status: voteReject, fields: []any{"job", jobName, "cause", "vcjob not in cache yet"}}
+	}
+
+	// Capacity rejects it every round: the minimum demand exceeds the queue's or an ancestor's
+	// capability. Abstain without reserving, so capacity still records the reason on the pod group
+	// and no standing reservation shrinks the owner's headroom for as long as the job exists.
+	if !snap.fitsQueueCapability(candidate) {
+		return vote{status: voteAbstain, fields: []any{"job", jobName, "skip", "exceeds queue capability"}}
 	}
 
 	if result := snap.quotaVerdict(candidate, s.accumulator); result != nil && result.Exceeded {
-		return vote{voteReject, []any{
+		return vote{status: voteReject, fields: []any{
 			"job", jobName,
 			"cause", "queue quota exceeded",
 			"queue", candidate.queue,
@@ -60,7 +71,7 @@ func (s *Server) decide(ctx context.Context, req *requestJobInfo) vote {
 	}
 
 	if blocker := snap.blockerFor(candidate, s.accumulator); blocker != nil {
-		return vote{voteReject, []any{
+		return vote{status: voteReject, fields: []any{
 			"job", jobName,
 			"cause", "blocked by timed out job",
 			"queue", candidate.queue,
@@ -104,7 +115,10 @@ func (snap *snapshot) blockerFor(candidate *jobView, acc *sessionAccumulator) *j
 			continue
 		}
 		if utils.IsPodGroupAdmitted(view.podGroupPhase) {
-			return view
+			if utils.IsPodGroupWaitingForNodes(view.podGroupPhase) {
+				return view
+			}
+			continue
 		}
 		if candidateTimedOut {
 			continue
