@@ -1653,7 +1653,7 @@ func main() {
 				}
 				if tx.Table("jobs").Migrator().HasColumn(&Job{}, "ScheduleType") {
 					if err := tx.Table("jobs").
-						Where("schedule_type = 0 AND status = 'Running' AND deleted_at IS NULL").
+						Where("schedule_type = 0 AND deleted_at IS NULL").
 						Update("last_settled_at", time.Now()).Error; err != nil {
 						return err
 					}

@@ -165,6 +165,23 @@ func TestDecideQuota(t *testing.T) {
 		So(s.decide(t.Context(), vcjobRequest(jobA)).status, ShouldEqual, voteAbstain)
 		So(s.decide(t.Context(), vcjobRequest(jobA)).status, ShouldEqual, voteAbstain)
 	})
+
+	PatchConvey("a job larger than its queue is quota checked but never reserved", t, func() {
+		stubJobNamespace()
+		stubQuota(map[string]string{"cpu": "2"})
+		candidate := newView(jobA, rl("cpu", "2"))
+		snap := newSnapshot(newView(jobB, rl("cpu", "1"), admitted), candidate)
+		addQueue(snap, publicQueue, "", rl("cpu", "1"))
+		s := seededServer(snap)
+		So(fieldValue(s.decide(t.Context(), vcjobRequest(jobA)), fieldCause), ShouldEqual, causeQuota)
+
+		snap = newSnapshot(candidate)
+		addQueue(snap, publicQueue, "", rl("cpu", "1"))
+		s = seededServer(snap)
+		result := s.decide(t.Context(), vcjobRequest(jobA))
+		So(fieldValue(result, fieldSkip), ShouldEqual, "exceeds queue capability")
+		So(s.accumulator.entries, ShouldBeEmpty)
+	})
 }
 
 // blockedBy decides for the candidate in a round that holds only it and one potential blocker.
@@ -296,6 +313,8 @@ func TestQueueCapability(t *testing.T) {
 		So(fitsCapability(required, rl("memory", "1Gi")), ShouldBeTrue)
 		So(fitsCapability(required, rl("cpu", "2")), ShouldBeTrue)
 		So(fitsCapability(required, rl("cpu", "1")), ShouldBeFalse)
+		So(fitsCapability(required, rl("cpu", "0")), ShouldBeTrue)
+		So(fitsCapability(rl(gpuV100, "1"), rl(gpuV100, "0")), ShouldBeFalse)
 	})
 
 	PatchConvey("fitsQueueCapability", t, func() {

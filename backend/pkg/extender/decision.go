@@ -24,8 +24,8 @@ type vote struct {
 	err    error
 }
 
-// decide runs the design's vote order: the capability guard, then per-user queue quota, then timeout
-// blocking. Every exit is either Reject or Abstain.
+// decide runs the design's vote order: per-user queue quota, then timeout blocking, then the capability
+// guard, which only decides whether to reserve. Every exit is either Reject or Abstain.
 func (s *Server) decide(ctx context.Context, req *requestJobInfo) vote {
 	jobName := req.ownerJobName()
 	if jobName == "" {
@@ -53,13 +53,6 @@ func (s *Server) decide(ctx context.Context, req *requestJobInfo) vote {
 		return vote{status: voteReject, fields: []any{"job", jobName, "cause", "vcjob not in cache yet"}}
 	}
 
-	// Capacity rejects it every round: the minimum demand exceeds the queue's or an ancestor's
-	// capability. Abstain without reserving, so capacity still records the reason on the pod group
-	// and no standing reservation shrinks the owner's headroom for as long as the job exists.
-	if !snap.fitsQueueCapability(candidate) {
-		return vote{status: voteAbstain, fields: []any{"job", jobName, "skip", "exceeds queue capability"}}
-	}
-
 	if result := snap.quotaVerdict(candidate, s.accumulator); result != nil && result.Exceeded {
 		return vote{status: voteReject, fields: []any{
 			"job", jobName,
@@ -79,6 +72,13 @@ func (s *Server) decide(ctx context.Context, req *requestJobInfo) vote {
 			"blockerPodGroupPhase", blocker.podGroupPhase,
 			"blockerResources", utils.ResourceListSummary(blocker.resources),
 		}}
+	}
+
+	// Capacity rejects it every round: the minimum demand exceeds the queue's or an ancestor's
+	// capability. Abstain without reserving, so capacity still records the reason on the pod group
+	// and no standing reservation shrinks the owner's headroom for as long as the job exists.
+	if !snap.fitsQueueCapability(candidate) {
+		return vote{status: voteAbstain, fields: []any{"job", jobName, "skip", "exceeds queue capability"}}
 	}
 
 	s.accumulator.reserve(candidate)
@@ -164,9 +164,12 @@ func (snap *snapshot) fitsQueueCapability(view *jobView) bool {
 	return true
 }
 
-// fitsCapability treats resources absent from capability as unlimited, matching volcano's semantics.
+// fitsCapability matches volcano's capacity plugin: absent resources and zero cpu or memory limits are unlimited.
 func fitsCapability(required, capability v1.ResourceList) bool {
 	for name, limit := range capability {
+		if (name == v1.ResourceCPU || name == v1.ResourceMemory) && limit.Sign() <= 0 {
+			continue
+		}
 		if requested, ok := required[name]; ok && requested.Cmp(limit) > 0 {
 			return false
 		}
