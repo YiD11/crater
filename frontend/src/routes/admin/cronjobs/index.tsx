@@ -173,8 +173,8 @@ function CronPolicy({ className }: { className?: string }) {
           const config = jobData[job.jobId]
           if (!config) return null
 
-          const currentStatus =
-            (statusQuery.data?.[job.jobId]?.status as CronJobConfigStatus) || config.status
+          const liveStatus = statusQuery.data?.[job.jobId]
+          const currentStatus = (liveStatus?.status as CronJobConfigStatus) || config.status
 
           return (
             <CronJobCard
@@ -183,6 +183,9 @@ function CronPolicy({ className }: { className?: string }) {
               jobName={job.jobName}
               jobType={job.jobType}
               status={currentStatus}
+              scheduled={liveStatus?.scheduled}
+              nextRun={liveStatus?.next_run}
+              timezone={liveStatus?.timezone}
               spec={config.spec}
               params={config.config as Record<string, number | string | string[]>}
               onUpdate={() => {

@@ -158,9 +158,12 @@ type GetCronjobConfigStatusReq struct {
 }
 
 type GetCronjobConfigStatusRespItem struct {
-	Name    string                    `json:"name"`
-	Status  model.CronJobConfigStatus `json:"status"`
-	EntryID int                       `json:"entry_id"`
+	Name      string                    `json:"name"`
+	Status    model.CronJobConfigStatus `json:"status"`
+	EntryID   int                       `json:"entry_id"`
+	Scheduled bool                      `json:"scheduled"`
+	NextRun   *time.Time                `json:"next_run,omitempty"`
+	Timezone  string                    `json:"timezone"`
 }
 
 func (mgr *OperationsMgr) GetCronjobConfigStatus(c *gin.Context) {
@@ -178,12 +181,20 @@ func (mgr *OperationsMgr) GetCronjobConfigStatus(c *gin.Context) {
 		resputil.Error(c, err.Error(), resputil.ServiceError)
 		return
 	}
+	timezone := mgr.cronJobManager.Timezone()
 	status := lo.SliceToMap(configs, func(item *model.CronJobConfig) (string, *GetCronjobConfigStatusRespItem) {
-		return item.Name, &GetCronjobConfigStatusRespItem{
-			Name:    item.Name,
-			Status:  item.Status,
-			EntryID: item.EntryID,
+		state := mgr.cronJobManager.GetScheduleState(item.Name)
+		resp := &GetCronjobConfigStatusRespItem{
+			Name:      item.Name,
+			Status:    item.Status,
+			EntryID:   int(state.EntryID),
+			Scheduled: state.Scheduled,
+			Timezone:  timezone,
 		}
+		if state.Scheduled && !state.NextRun.IsZero() {
+			resp.NextRun = &state.NextRun
+		}
+		return item.Name, resp
 	})
 	resputil.Success(c, status)
 }

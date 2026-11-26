@@ -65,6 +65,9 @@ export interface CronJobCardProps {
   jobName: string
   jobType: string
   status: CronJobConfigStatus
+  scheduled?: boolean
+  nextRun?: string
+  timezone?: string
   spec: string
   params: Record<string, number | string | string[]>
   onUpdate: () => void
@@ -123,6 +126,9 @@ export default function CronJobCard({
   jobName,
   jobType,
   status,
+  scheduled,
+  nextRun,
+  timezone,
   spec,
   params,
   onUpdate,
@@ -134,6 +140,7 @@ export default function CronJobCard({
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const isSuspended = status === CronJobConfigStatus.Suspended
+  const isMissingFromScheduler = !isSuspended && scheduled === false
   const visibleParams = Object.entries(jobParams).filter(
     ([key, value]) => !HIDDEN_PARAMS.includes(key) && !Array.isArray(value)
   )
@@ -279,6 +286,9 @@ export default function CronJobCard({
           </div>
           <div className="flex shrink-0 items-center gap-2">
             {hasChanges && <Badge variant="secondary">{t('cronPolicy.unsaved')}</Badge>}
+            {isMissingFromScheduler && (
+              <Badge variant="destructive">{t('cronPolicy.notScheduled')}</Badge>
+            )}
             <CronJobStatusBadge status={status} />
           </div>
         </div>
@@ -287,7 +297,14 @@ export default function CronJobCard({
           <CalendarClockIcon className="text-primary size-4 shrink-0" />
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{getScheduleSummary(cronSpec)}</p>
-            <p className="text-muted-foreground truncate font-mono text-xs">{cronSpec}</p>
+            <p className="text-muted-foreground truncate font-mono text-xs">
+              {timezone ? `${cronSpec} · ${timezone}` : cronSpec}
+            </p>
+            {nextRun && !isSuspended && (
+              <p className="text-muted-foreground truncate text-xs">
+                {t('cronPolicy.nextRun', { time: new Date(nextRun).toLocaleString() })}
+              </p>
+            )}
           </div>
         </div>
 
@@ -349,6 +366,11 @@ export default function CronJobCard({
                   placeholder="*/5 * * * *"
                 />
                 <p className="text-muted-foreground text-xs">{getScheduleSummary(cronSpec)}</p>
+                {timezone && (
+                  <p className="text-muted-foreground text-xs">
+                    {t('cronPolicy.timezoneHint', { timezone })}
+                  </p>
+                )}
               </div>
 
               {visibleParams.length > 0 && (

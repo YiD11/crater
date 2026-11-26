@@ -758,6 +758,9 @@ export interface GetCronjobConfigStatusRespItem {
   name: string
   status: CronJobConfigStatusType
   entry_id: number
+  scheduled: boolean
+  next_run?: string
+  timezone: string
 }
 
 export type GetCronjobConfigStatusResp = Record<string, GetCronjobConfigStatusRespItem>

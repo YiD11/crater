@@ -11884,6 +11884,7 @@ const docTemplate = `{
                     "$ref": "#/definitions/gorm.DeletedAt"
                 },
                 "entry_id": {
+                    "description": "unused: robfig ids are process-local (#594)",
                     "type": "integer"
                 },
                 "id": {

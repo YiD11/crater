@@ -22,6 +22,8 @@ const (
 	MAX_RETRY_COUNT = 3
 )
 
+var errJobSuspended = errors.New("cron job is suspended")
+
 func WrapFunc(jobName string, anyFunc util.AnyFunc) cron.FuncJob {
 	return func() {
 		db := query.GetDB()
@@ -35,8 +37,11 @@ func WrapFunc(jobName string, anyFunc util.AnyFunc) cron.FuncJob {
 				First(cur).Error; err != nil {
 				return err
 			}
+			if cur.IsSuspended() {
+				return errJobSuspended
+			}
 			if cur.Status != model.CronJobConfigStatusIdle {
-				klog.Errorf("WrapFunc job %s is not in idle status (current: %s)", jobName, cur.Status)
+				klog.Warningf("WrapFunc job %s is not in idle status (current: %s)", jobName, cur.Status)
 			}
 			return tx.Model(cur).Update(
 				query.CronJobConfig.Status.ColumnName().String(),
@@ -45,6 +50,10 @@ func WrapFunc(jobName string, anyFunc util.AnyFunc) cron.FuncJob {
 		})
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return
+			}
+			if errors.Is(err, errJobSuspended) {
+				klog.Warningf("WrapFunc skipped job %s because it is suspended", jobName)
 				return
 			}
 			klog.Errorf("WrapFunc failed to update job status to running: %v", err)

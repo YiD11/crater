@@ -63,7 +63,7 @@ type CronJobConfig struct {
 	Spec    string              `gorm:"type:varchar(128);not null;index;comment:Cron调度规范" json:"spec"`
 	Config  datatypes.JSON      `gorm:"type:jsonb;comment:Cronjob配置数据" json:"config"`
 	Status  CronJobConfigStatus `gorm:"type:varchar(128);not null;index;default:unknown;comment:执行状态" json:"status"`
-	EntryID int                 `gorm:"type:int;comment:Cronjob标识ID" json:"entry_id"`
+	EntryID int                 `gorm:"type:int;comment:Cronjob标识ID" json:"entry_id"` // unused: robfig ids are process-local (#594)
 }
 
 func (CronJobConfig) TableName() string {
